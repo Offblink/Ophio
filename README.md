@@ -11,7 +11,7 @@ Yeah you guessed it right—— ***Ophio***​ allow you control your PC in anot
 
 Dearest U: ***Ophio2*** coming!
 
-At *Ophio*, we removed the control of mouse moving, for the reason that the server developed by **JavaScript** is slow and inefficient.
+At ***Ophio***, we removed the control of mouse moving, for the reason that the server developed by **JavaScript** is slow and inefficient.
 
 At the past 3 weeks, so much **schoolwork** dragged me a lot. I was too tired to go on improving *Ophio*.
 
