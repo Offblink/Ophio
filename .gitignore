@@ -1,0 +1,11 @@
+# Python
+__pycache__/
+*.pyc
+
+# 构建产物
+*.exe
+build/
+dist/
+
+# Node
+node_modules/

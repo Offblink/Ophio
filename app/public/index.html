@@ -1,0 +1,1066 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Ophio</title>
+    <style>
+        /* 基本样式重置与容器样式 */
+        * {
+            margin: 0;
+            padding: 0;
+            -webkit-tap-highlight-color: transparent;
+            -webkit-touch-callout: none;
+            -webkit-user-select: none;
+            user-select: none;
+            box-sizing: border-box;
+        }
+        body, html {
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background: #1a1a1a;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            color: #e0e0e0;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* 头部标题区域 */
+        .header {
+            text-align: center;
+            padding: 15px;
+            background: #2d2d2d;
+            border-bottom: 1px solid #444;
+        }
+        .header h1 {
+            font-size: 1.5em;
+            color: #4CAF50;
+        }
+        .status-bar {
+            font-size: 0.9em;
+            margin-top: 5px;
+            color: #aaa;
+        }
+
+        /* 视频显示区域 */
+        .video-container-wrapper {
+            flex-grow: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: #000;
+            margin-top: 20px;
+        }
+
+        .video-container {
+            position: relative;
+            background: #000;
+            overflow: hidden;
+            width: 0;
+            height: 0;
+        }
+
+        .video-feed {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            display: block;
+        }
+
+        /* 控制面板 */
+        .control-panel {
+            background: #2d2d2d;
+            padding: 15px;
+            border-top: 1px solid #444;
+            display: flex;
+            justify-content: space-around;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+
+        /* 基本控制按钮 */
+        .control-btn {
+            padding: 12px 20px;
+            border: none;
+            border-radius: 8px;
+            font-weight: bold;
+            font-size: 0.95em;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            min-width: 120px;
+            color: white;
+        }
+
+        .control-btn:active {
+            transform: scale(0.95);
+        }
+
+        .left-click {
+            background: linear-gradient(135deg, #2196F3, #1976D2);
+        }
+
+        .right-click {
+            background: linear-gradient(135deg, #FF9800, #F57C00);
+        }
+
+        .scroll-up {
+            background: linear-gradient(135deg, #4CAF50, #388E3C);
+        }
+
+        .scroll-down {
+            background: linear-gradient(135deg, #f44336, #d32f2f);
+        }
+
+        /* 虚拟键盘区域 */
+        .keyboard-container {
+            background: #2d2d2d;
+            border-top: 1px solid #444;
+            padding: 10px;
+            max-height: 60vh;
+            overflow-y: auto;
+        }
+
+        .keyboard-section {
+            margin-bottom: 15px;
+        }
+
+        .keyboard-section h3 {
+            color: #888;
+            font-size: 0.9em;
+            margin-bottom: 8px;
+            padding-left: 5px;
+        }
+
+        .key-row {
+            display: flex;
+            gap: 5px;
+            margin-bottom: 5px;
+        }
+
+        .key {
+            flex: 1;
+            padding: 12px 5px;
+            background: #3a3a3a;
+            border: 1px solid #555;
+            border-radius: 5px;
+            color: white;
+            font-size: 0.85em;
+            font-weight: bold;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.1s ease;
+            min-height: 40px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .key:active {
+            background: #4CAF50;
+            transform: scale(0.95);
+        }
+
+        .key.pressed {
+            background: #4CAF50;
+            color: white;
+            box-shadow: 0 0 10px rgba(76, 175, 80, 0.5);
+        }
+
+        .key.letter {
+            background: #4a4a4a;
+        }
+
+        .key.number {
+            background: #3a3a6a;
+        }
+
+        .key.function {
+            background: #5a5a5a;
+        }
+
+        .key.special {
+            background: #6a6a6a;
+        }
+
+        .key.esc {
+            background: #f44336;
+        }
+
+        .key.tab {
+            background: #FF9800;
+        }
+
+        .key.enter {
+            background: #2196F3;
+        }
+
+        .key.backspace {
+            background: #f44336;
+        }
+
+        .key.ctrl {
+            background: #FF9800;
+        }
+
+        .key.shift {
+            background: #9C27B0;
+        }
+
+        .key.win {
+            background: #4CAF50;
+        }
+
+        .key.arrow {
+            background: #607D8B;
+        }
+
+        /* 空格键 */
+        .space-key {
+            width: 100%;
+            padding: 15px;
+            background: #3a3a3a;
+            border: 1px solid #555;
+            border-radius: 5px;
+            color: #888;
+            font-size: 0.9em;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.1s ease;
+        }
+
+        .space-key:active {
+            background: #4CAF50;
+            color: white;
+        }
+
+        /* 键盘状态指示器 */
+        .key-status {
+            display: flex;
+            justify-content: space-around;
+            margin-top: 10px;
+            padding: 8px;
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 5px;
+        }
+
+        .key-status-item {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            font-size: 0.8em;
+        }
+
+        .status-indicator {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: #555;
+        }
+
+        .status-indicator.active {
+            background: #4CAF50;
+            box-shadow: 0 0 5px #4CAF50;
+        }
+
+        /* 底部信息栏 */
+        .footer {
+            text-align: center;
+            padding: 10px;
+            font-size: 0.8em;
+            color: #888;
+            background: #252525;
+        }
+
+        /* 连接状态提示 */
+        .connection-status {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0, 0, 0, 0.85);
+            color: white;
+            padding: 20px 30px;
+            border-radius: 10px;
+            text-align: center;
+            display: none;
+            z-index: 1001;
+        }
+
+        /* 响应式调整 */
+        @media (max-width: 768px) {
+            .control-panel {
+                flex-direction: column;
+                align-items: center;
+            }
+
+            .control-btn {
+                width: 90%;
+                min-width: auto;
+            }
+
+            .key {
+                font-size: 0.8em;
+                padding: 10px 3px;
+                min-height: 35px;
+            }
+
+            .keyboard-container {
+                max-height: 50vh;
+            }
+        }
+
+        /* 标签页切换 */
+        .tab-container {
+            display: flex;
+            background: #252525;
+        }
+
+        .tab {
+            flex: 1;
+            padding: 12px;
+            text-align: center;
+            background: #333;
+            border: none;
+            color: #aaa;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .tab.active {
+            background: #2d2d2d;
+            color: white;
+            border-bottom: 2px solid #4CAF50;
+        }
+
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div class="status-bar">状态: <span id="statusText">正在连接...</span></div>
+    </div>
+
+    <!-- 标签页切换 -->
+    <div class="tab-container">
+        <button class="tab active" id="mouseTab">鼠标控制</button>
+        <button class="tab" id="keyboardTab">键盘控制</button>
+    </div>
+
+    <!-- 视频显示区域 -->
+    <div class="video-container-wrapper" id="videoContainerWrapper">
+        <div class="video-container" id="videoContainer">
+            <img class="video-feed" id="videoFeed" alt="远程屏幕" crossorigin="anonymous">
+            <div class="connection-status" id="connectionStatus">
+                正在连接到服务器...
+            </div>
+        </div>
+    </div>
+
+    <!-- 鼠标控制面板 -->
+    <div class="tab-content active" id="mouseControl">
+        <div class="control-panel">
+            <button class="control-btn left-click" id="leftClickBtn">左键</button>
+            <button class="control-btn right-click" id="rightClickBtn">右键</button>
+            <button class="control-btn scroll-up" id="scrollUpBtn">上滚</button>
+            <button class="control-btn scroll-down" id="scrollDownBtn">下滚</button>
+        </div>
+    </div>
+
+    <!-- 键盘控制面板 -->
+    <div class="tab-content" id="keyboardControl">
+        <div class="keyboard-container">
+            <!-- 数字键区 -->
+            <div class="keyboard-section">
+                <h3>数字键</h3>
+                <div class="key-row">
+                    <div class="key number" data-key="1">1</div>
+                    <div class="key number" data-key="2">2</div>
+                    <div class="key number" data-key="3">3</div>
+                    <div class="key number" data-key="4">4</div>
+                    <div class="key number" data-key="5">5</div>
+                    <div class="key number" data-key="6">6</div>
+                    <div class="key number" data-key="7">7</div>
+                    <div class="key number" data-key="8">8</div>
+                    <div class="key number" data-key="9">9</div>
+                    <div class="key number" data-key="0">0</div>
+                </div>
+            </div>
+
+            <!-- 字母键区 -->
+            <div class="keyboard-section">
+                <h3>字母键</h3>
+                <div class="key-row">
+                    <div class="key letter" data-key="q">Q</div>
+                    <div class="key letter" data-key="w">W</div>
+                    <div class="key letter" data-key="e">E</div>
+                    <div class="key letter" data-key="r">R</div>
+                    <div class="key letter" data-key="t">T</div>
+                    <div class="key letter" data-key="y">Y</div>
+                    <div class="key letter" data-key="u">U</div>
+                    <div class="key letter" data-key="i">I</div>
+                    <div class="key letter" data-key="o">O</div>
+                    <div class="key letter" data-key="p">P</div>
+                </div>
+                <div class="key-row">
+                    <div class="key letter" data-key="a">A</div>
+                    <div class="key letter" data-key="s">S</div>
+                    <div class="key letter" data-key="d">D</div>
+                    <div class="key letter" data-key="f">F</div>
+                    <div class="key letter" data-key="g">G</div>
+                    <div class="key letter" data-key="h">H</div>
+                    <div class="key letter" data-key="j">J</div>
+                    <div class="key letter" data-key="k">K</div>
+                    <div class="key letter" data-key="l">L</div>
+                </div>
+                <div class="key-row">
+                    <div class="key letter" data-key="z">Z</div>
+                    <div class="key letter" data-key="x">X</div>
+                    <div class="key letter" data-key="c">C</div>
+                    <div class="key letter" data-key="v">V</div>
+                    <div class="key letter" data-key="b">B</div>
+                    <div class="key letter" data-key="n">N</div>
+                    <div class="key letter" data-key="m">M</div>
+                </div>
+            </div>
+
+            <!-- 功能键区 -->
+            <div class="keyboard-section">
+                <h3>功能键</h3>
+                <div class="key-row">
+                    <div class="key esc" data-key="esc">ESC</div>
+                    <div class="key tab" data-key="tab">Tab</div>
+                    <div class="key enter" data-key="enter">Enter</div>
+                    <div class="key backspace" data-key="backspace">← Backspace</div>
+                </div>
+            </div>
+
+            <!-- 方向键区 -->
+            <div class="keyboard-section">
+                <h3>方向键</h3>
+                <div class="key-row" style="justify-content: center;">
+                    <div class="key arrow" data-key="up">↑</div>
+                </div>
+                <div class="key-row" style="justify-content: center;">
+                    <div class="key arrow" data-key="left">←</div>
+                    <div class="key arrow" data-key="down">↓</div>
+                    <div class="key arrow" data-key="right">→</div>
+                </div>
+            </div>
+
+            <!-- 特殊键区 -->
+            <div class="keyboard-section">
+                <h3>特殊键 (单击按住，再单击释放)</h3>
+                <div class="key-row">
+                    <div class="key ctrl" data-key="ctrl">Ctrl</div>
+                    <div class="key shift" data-key="shift">Shift</div>
+                    <div class="key win" data-key="win">Win</div>
+                </div>
+            </div>
+
+            <!-- 空格键 -->
+            <div class="keyboard-section">
+                <div class="space-key" data-key="space">空格键 (Space)</div>
+            </div>
+
+            <!-- 键盘状态指示器 -->
+            <div class="key-status">
+                <div class="key-status-item">
+                    <div class="status-indicator" id="ctrlStatus"></div>
+                    <span>Ctrl</span>
+                </div>
+                <div class="key-status-item">
+                    <div class="status-indicator" id="shiftStatus"></div>
+                    <span>Shift</span>
+                </div>
+                <div class="key-status-item">
+                    <div class="status-indicator" id="winStatus"></div>
+                    <span>Win</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="footer">
+        屏幕共享服务 | 键盘控制 | 端口: 8888
+    </div>
+
+    <script>
+        // --- 全局变量与配置 ---
+        const host = window.location.hostname;
+        const WS_SERVER_URL = `ws://${host}:8889`;
+        let ws = null;
+        let reconnectAttempts = 0;
+        const MAX_RECONNECT_ATTEMPTS = 10;
+
+        // 目标屏幕分辨率（用于调整触控区域宽高比）
+        const TARGET_SCREEN_WIDTH = 2240;
+        const TARGET_SCREEN_HEIGHT = 1400;
+
+        // 鼠标状态
+        let mouseX = 0.5;  // 初始位置（中心）
+        let mouseY = 0.5;
+        let isDragging = false;
+        let lastTouchTime = 0;
+
+        // 特殊键状态（切换键）
+        const toggleKeys = {
+            'ctrl': { pressed: false, element: null },
+            'shift': { pressed: false, element: null },
+            'win': { pressed: false, element: null }
+        };
+
+        // 非特殊键列表
+        const nonSpecialKeys = [
+            '1','2','3','4','5','6','7','8','9','0',
+            'q','w','e','r','t','y','u','i','o','p',
+            'a','s','d','f','g','h','j','k','l',
+            'z','x','c','v','b','n','m',
+            'esc','tab','enter','backspace','up','down','left','right','space'
+        ];
+
+        // 状态指示器元素
+        const ctrlStatus = document.getElementById('ctrlStatus');
+        const shiftStatus = document.getElementById('shiftStatus');
+        const winStatus = document.getElementById('winStatus');
+
+        // DOM 元素引用
+        const statusText = document.getElementById('statusText');
+        const videoFeed = document.getElementById('videoFeed');
+        let currentFrameUrl = null;  // 当前帧的 Blob URL，用于回收
+        const connectionStatus = document.getElementById('connectionStatus');
+        const videoContainer = document.getElementById('videoContainer');
+        const videoContainerWrapper = document.getElementById('videoContainerWrapper');
+
+        // 调整视频容器宽高比以匹配目标屏幕
+        function resizeVideoContainer() {
+            const wrapperWidth = videoContainerWrapper.clientWidth;
+            const wrapperHeight = videoContainerWrapper.clientHeight;
+            
+            const targetRatio = TARGET_SCREEN_WIDTH / TARGET_SCREEN_HEIGHT;
+            const wrapperRatio = wrapperWidth / wrapperHeight;
+            
+            let containerWidth, containerHeight;
+            
+            if (wrapperRatio > targetRatio) {
+                containerHeight = wrapperHeight;
+                containerWidth = containerHeight * targetRatio;
+            } else {
+                containerWidth = wrapperWidth;
+                containerHeight = containerWidth / targetRatio;
+            }
+            
+            videoContainer.style.width = `${containerWidth}px`;
+            videoContainer.style.height = `${containerHeight}px`;
+        }
+
+        // 标签页元素
+        const mouseTab = document.getElementById('mouseTab');
+        const keyboardTab = document.getElementById('keyboardTab');
+        const mouseControl = document.getElementById('mouseControl');
+        const keyboardControl = document.getElementById('keyboardControl');
+
+        // 鼠标控制按钮
+        const leftClickBtn = document.getElementById('leftClickBtn');
+        const rightClickBtn = document.getElementById('rightClickBtn');
+        const scrollUpBtn = document.getElementById('scrollUpBtn');
+        const scrollDownBtn = document.getElementById('scrollDownBtn');
+
+        // --- 鼠标移动功能 ---
+        function sendMouseMove(x, y) {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                const command = {
+                    action: 'mouse_move',
+                    x: x,
+                    y: y,
+                    timestamp: Date.now()
+                };
+                ws.send(JSON.stringify(command));
+                console.log(`鼠标移动: x=${x.toFixed(3)}, y=${y.toFixed(3)}`);
+            }
+        }
+
+        // 视频容器触控事件
+        videoContainer.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+
+            const touch = e.touches[0];
+            const rect = videoContainer.getBoundingClientRect();
+            const x = (touch.clientX - rect.left) / rect.width;
+            const y = (touch.clientY - rect.top) / rect.height;
+
+            mouseX = x;
+            mouseY = y;
+            sendMouseMove(x, y);
+
+            isDragging = true;
+            lastTouchTime = Date.now();
+        }, { passive: false });
+
+        videoContainer.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+
+            if (isDragging) {
+                const touch = e.touches[0];
+                const rect = videoContainer.getBoundingClientRect();
+                const x = Math.max(0, Math.min(1, (touch.clientX - rect.left) / rect.width));
+                const y = Math.max(0, Math.min(1, (touch.clientY - rect.top) / rect.height));
+
+                mouseX = x;
+                mouseY = y;
+
+                // 节流：每50ms发送一次
+                if (Date.now() - lastTouchTime > 50) {
+                    sendMouseMove(x, y);
+                    lastTouchTime = Date.now();
+                }
+            }
+        }, { passive: false });
+
+        videoContainer.addEventListener('touchend', (e) => {
+            e.preventDefault();
+            isDragging = false;
+        }, { passive: false });
+
+        videoContainer.addEventListener('touchcancel', (e) => {
+            isDragging = false;
+        });
+
+        // --- 标签页切换 ---
+        mouseTab.addEventListener('click', () => {
+            mouseTab.classList.add('active');
+            keyboardTab.classList.remove('active');
+            mouseControl.classList.add('active');
+            keyboardControl.classList.remove('active');
+        });
+
+        keyboardTab.addEventListener('click', () => {
+            keyboardTab.classList.add('active');
+            mouseTab.classList.remove('active');
+            keyboardControl.classList.add('active');
+            mouseControl.classList.remove('active');
+        });
+
+        // --- 工具函数 ---
+        function updateStatus(status, isError = false) {
+            statusText.textContent = status;
+            statusText.style.color = isError ? '#ff6b6b' : '#4CAF50';
+
+            if (status.includes('连接') || status.includes('错误') || status.includes('断开')) {
+                connectionStatus.style.display = 'block';
+                connectionStatus.textContent = status;
+                connectionStatus.style.background = isError ?
+                    'rgba(211, 47, 47, 0.9)' : 'rgba(33, 150, 243, 0.9)';
+            } else if (status.includes('正常')) {
+                connectionStatus.style.display = 'none';
+            }
+        }
+
+        // --- 键盘控制函数 ---
+        function setupKeyboardControls() {
+            // 获取所有键
+            const keys = document.querySelectorAll('.key, .space-key');
+
+            keys.forEach(key => {
+                const keyName = key.getAttribute('data-key');
+
+                // 普通键处理（按下/释放）
+                if (nonSpecialKeys.includes(keyName)) {
+                    // 触摸开始 - 按下
+                    key.addEventListener('touchstart', (e) => {
+                        e.preventDefault();
+
+                        // 检查是否有特殊键按下
+                        const pressedSpecialKeys = getPressedSpecialKeys();
+
+                        if (pressedSpecialKeys.length > 0) {
+                            key.classList.add('pressed');
+                            sendCombinationKey(keyName, pressedSpecialKeys);
+                        } else {
+                            key.classList.add('pressed');
+                            sendKeyCommand(keyName, 'keydown');
+                        }
+                    });
+
+                    // 触摸结束 - 释放
+                    key.addEventListener('touchend', (e) => {
+                        e.preventDefault();
+
+                        const pressedSpecialKeys = getPressedSpecialKeys();
+
+                        if (pressedSpecialKeys.length > 0) {
+                            key.classList.remove('pressed');
+                        } else {
+                            key.classList.remove('pressed');
+                            sendKeyCommand(keyName, 'keyup');
+                        }
+                    });
+
+                    // 鼠标事件（桌面测试用）
+                    key.addEventListener('mousedown', () => {
+                        const pressedSpecialKeys = getPressedSpecialKeys();
+
+                        if (pressedSpecialKeys.length > 0) {
+                            key.classList.add('pressed');
+                            sendCombinationKey(keyName, pressedSpecialKeys);
+                        } else {
+                            key.classList.add('pressed');
+                            sendKeyCommand(keyName, 'keydown');
+                        }
+                    });
+
+                    key.addEventListener('mouseup', () => {
+                        const pressedSpecialKeys = getPressedSpecialKeys();
+
+                        if (pressedSpecialKeys.length > 0) {
+                            key.classList.remove('pressed');
+                        } else {
+                            key.classList.remove('pressed');
+                            sendKeyCommand(keyName, 'keyup');
+                        }
+                    });
+
+                    key.addEventListener('mouseleave', () => {
+                        if (key.classList.contains('pressed')) {
+                            key.classList.remove('pressed');
+
+                            const pressedSpecialKeys = getPressedSpecialKeys();
+
+                            if (pressedSpecialKeys.length === 0) {
+                                sendKeyCommand(keyName, 'keyup');
+                            }
+                        }
+                    });
+                }
+                // 特殊键处理（切换状态）
+                else if (['ctrl', 'shift', 'win'].includes(keyName)) {
+                    toggleKeys[keyName].element = key;
+                    updateToggleKeyStatus(keyName);
+
+                    key.addEventListener('click', (e) => {
+                        e.preventDefault();
+                        toggleKey(keyName);
+                    });
+
+                    key.addEventListener('touchstart', (e) => {
+                        e.preventDefault();
+                        toggleKey(keyName);
+                    });
+                }
+            });
+        }
+
+        function getPressedSpecialKeys() {
+            return Object.keys(toggleKeys).filter(key => toggleKeys[key].pressed);
+        }
+
+        function toggleKey(keyName) {
+            if (toggleKeys[keyName]) {
+                toggleKeys[keyName].pressed = !toggleKeys[keyName].pressed;
+
+                const action = toggleKeys[keyName].pressed ? 'keydown' : 'keyup';
+                sendKeyCommand(keyName, action);
+
+                updateToggleKeyStatus(keyName);
+
+                const key = toggleKeys[keyName].element;
+                if (key) {
+                    if (toggleKeys[keyName].pressed) {
+                        key.classList.add('pressed');
+                    } else {
+                        key.classList.remove('pressed');
+                    }
+                }
+            }
+        }
+
+        function sendCombinationKey(nonSpecialKey, specialKeys) {
+            if (!ws || ws.readyState !== WebSocket.OPEN) {
+                updateStatus('WebSocket未连接，请等待连接...', true);
+                connectWebSocket();
+                return;
+            }
+
+            const pressedSpecialKeys = [...specialKeys];
+
+            pressedSpecialKeys.forEach(specialKey => {
+                if (!toggleKeys[specialKey].pressed) {
+                    sendKeyCommand(specialKey, 'keydown');
+                }
+            });
+
+            sendKeyCommand(nonSpecialKey, 'keydown');
+
+            setTimeout(() => {
+                sendKeyCommand(nonSpecialKey, 'keyup');
+
+                pressedSpecialKeys.forEach(specialKey => {
+                    sendKeyCommand(specialKey, 'keyup');
+
+                    toggleKeys[specialKey].pressed = false;
+                    updateToggleKeyStatus(specialKey);
+
+                    const keyElement = toggleKeys[specialKey].element;
+                    if (keyElement) {
+                        keyElement.classList.remove('pressed');
+                    }
+                });
+            }, 50);
+        }
+
+        function updateToggleKeyStatus(keyName) {
+            const indicatorMap = {
+                'ctrl': ctrlStatus,
+                'shift': shiftStatus,
+                'win': winStatus
+            };
+
+            const indicator = indicatorMap[keyName];
+            if (indicator) {
+                if (toggleKeys[keyName].pressed) {
+                    indicator.classList.add('active');
+                } else {
+                    indicator.classList.remove('active');
+                }
+            }
+        }
+
+        // --- 发送控制指令 ---
+        function sendControlCommand(action) {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                const command = {
+                    action: action,
+                    timestamp: Date.now()
+                };
+
+                ws.send(JSON.stringify(command));
+                console.log(`已发送指令: ${action}`);
+
+                // 按钮反馈
+                const button = event ? event.target : null;
+                if (button) {
+                    const originalText = button.textContent;
+                    button.textContent = '✓';
+                    button.style.opacity = '0.8';
+
+                    setTimeout(() => {
+                        button.textContent = originalText;
+                        button.style.opacity = '1';
+                    }, 300);
+                }
+
+            } else {
+                updateStatus('WebSocket未连接，请等待连接...', true);
+                connectWebSocket();
+            }
+        }
+
+        function sendKeyCommand(key, action) {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                const command = {
+                    action: 'keyboard',
+                    key: key,
+                    state: action,
+                    timestamp: Date.now()
+                };
+
+                ws.send(JSON.stringify(command));
+                console.log(`键盘事件: ${key} - ${action}`);
+            } else {
+                updateStatus('WebSocket未连接，请等待连接...', true);
+                connectWebSocket();
+            }
+        }
+
+        // --- WebSocket连接 ---
+        function connectWebSocket() {
+            if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
+                updateStatus('连接失败次数过多，请刷新页面重试', true);
+                return;
+            }
+
+            updateStatus('正在连接WebSocket...');
+            console.log(`连接WebSocket: ${WS_SERVER_URL}`);
+
+            ws = new WebSocket(WS_SERVER_URL);
+
+            ws.onopen = () => {
+                console.log('WebSocket连接已建立');
+                reconnectAttempts = 0;
+
+                ws.send(JSON.stringify({
+                    type: 'browser',
+                    client: 'web_controller',
+                    userAgent: navigator.userAgent,
+                    timestamp: Date.now()
+                }));
+
+                updateStatus('已连接，等待视频流...');
+
+                // 心跳
+                setInterval(() => {
+                    if (ws && ws.readyState === WebSocket.OPEN) {
+                        ws.send(JSON.stringify({ type: 'ping', timestamp: Date.now() }));
+                    }
+                }, 30000);
+            };
+
+            ws.onmessage = (event) => {
+                try {
+                    const data = event.data;
+
+                    // 二进制帧：JPEG 图片数据
+                    if (data instanceof Blob) {
+                        updateVideoFrame(data);
+                        return;
+                    }
+
+                    if (data.startsWith('{')) {
+                        try {
+                            const response = JSON.parse(data);
+
+                            if (response.type === 'welcome') {
+                                console.log('服务器欢迎消息:', response.message);
+                                updateStatus('连接成功');
+                            } else if (response.status === 'ok') {
+                                console.log('服务器确认:', response.received);
+                            }
+                            return;
+                        } catch (jsonError) {
+                            // 忽略
+                        }
+                    }
+
+                    // 处理图片数据
+                    updateVideoFrame(data);
+
+                } catch (e) {
+                    updateVideoFrame(event.data);
+                }
+            };
+
+            ws.onerror = (error) => {
+                console.error('WebSocket错误:', error);
+                updateStatus('连接错误，3秒后重试...', true);
+            };
+
+            ws.onclose = () => {
+                console.log('WebSocket连接关闭');
+
+                if (reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
+                    reconnectAttempts++;
+                    updateStatus(`连接断开，正在重试 (${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})...`, true);
+
+                    const delay = Math.min(1000 * Math.pow(1.5, reconnectAttempts), 10000);
+                    setTimeout(connectWebSocket, delay);
+                } else {
+                    updateStatus('连接失败次数过多，请刷新页面重试', true);
+                }
+            };
+        }
+
+        // --- 更新视频帧 ---
+        function updateVideoFrame(data) {
+            try {
+                // 二进制帧：JPEG 图片（当前格式）
+                if (data instanceof Blob) {
+                    if (data.size > 0) {
+                        if (currentFrameUrl) {
+                            URL.revokeObjectURL(currentFrameUrl);
+                        }
+                        currentFrameUrl = URL.createObjectURL(data);
+                        videoFeed.src = currentFrameUrl;
+
+                        if (connectionStatus.style.display !== 'none') {
+                            connectionStatus.style.display = 'none';
+                            updateStatus('视频流正常');
+                        }
+                    }
+                    return;
+                }
+
+                // 兼容旧格式：base64 字符串
+                if (typeof data === 'string' && (data.startsWith('/9j/') || data.length > 100)) {
+                    videoFeed.src = 'data:image/jpeg;base64,' + data;
+
+                    if (connectionStatus.style.display !== 'none') {
+                        connectionStatus.style.display = 'none';
+                        updateStatus('视频流正常');
+                    }
+                }
+            } catch (e) {
+                console.error('更新视频帧失败:', e);
+            }
+        }
+
+        // --- 页面加载与初始化 ---
+        window.addEventListener('load', () => {
+            console.log('页面加载完成，初始化屏幕共享控制端');
+
+            // 调整视频容器宽高比
+            resizeVideoContainer();
+            window.addEventListener('resize', resizeVideoContainer);
+
+            // 设置键盘控制
+            setupKeyboardControls();
+
+            // 连接WebSocket
+            connectWebSocket();
+
+            // 鼠标按钮事件绑定
+            leftClickBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                sendControlCommand('left_click');
+            });
+
+            rightClickBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                sendControlCommand('right_click');
+            });
+
+            scrollUpBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                sendControlCommand('scroll_up');
+            });
+
+            scrollDownBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                sendControlCommand('scroll_down');
+            });
+
+            // 视频元素事件
+            videoFeed.onload = () => {
+                updateStatus('视频流正常');
+            };
+
+            videoFeed.onerror = () => {
+                updateStatus('视频流加载失败', true);
+            };
+
+            // 显示连接提示
+            connectionStatus.style.display = 'block';
+        });
+
+        // 页面卸载清理
+        window.addEventListener('beforeunload', () => {
+            // 释放所有按下的特殊键
+            Object.keys(toggleKeys).forEach(key => {
+                if (toggleKeys[key].pressed) {
+                    sendKeyCommand(key, 'keyup');
+                }
+            });
+
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.close();
+            }
+        });
+    </script>
+</body>
+</html>

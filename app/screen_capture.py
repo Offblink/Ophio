@@ -1,0 +1,628 @@
+#!/usr/bin/env python3
+"""
+屏幕捕获客户端 - 调试版本
+支持相对移动量（dx, dy）和绝对坐标（x, y）两种格式
+包含详细调试输出
+"""
+
+import asyncio
+import json
+import time
+import sys
+import os
+import platform
+from io import BytesIO
+import traceback
+
+os.environ['PYAUTOGUI_SAFETY'] = '0'
+
+try:
+    from PIL import ImageGrab, Image, ImageDraw, ImageFont, ImageChops
+    HAS_PIL = True
+except ImportError as e:
+    print(f"[错误] 未安装Pillow库: {e}")
+    HAS_PIL = False
+    sys.exit(1)
+
+try:
+    import websockets
+    HAS_WEBSOCKETS = True
+except ImportError as e:
+    print(f"[错误] 未安装websockets库: {e}")
+    HAS_WEBSOCKETS = False
+    sys.exit(1)
+
+try:
+    import pyautogui
+    HAS_PYAUTOGUI = True
+    pyautogui.FAILSAFE = False
+    pyautogui.PAUSE = 0.01
+    print("[信息] pyautogui 已启用")
+except ImportError as e:
+    HAS_PYAUTOGUI = False
+    print("[警告] 未安装pyautogui，控制功能将不可用")
+except Exception as e:
+    HAS_PYAUTOGUI = False
+    print(f"[警告] pyautogui 初始化失败: {e}")
+
+class ScreenCaptureWithKeyboard:
+    def __init__(self, host="127.0.0.1", port=8889):
+        self.host = host
+        self.port = port
+        self.ws_url = f"ws://{host}:{port}"
+        self.websocket = None
+        self.is_running = False
+        self.frame_count = 0
+        self.last_status_time = 0
+        self.last_control_time = 0
+        self.last_mouse_pos = None
+
+        # 帧优化：静止检测 + 丢帧统计
+        self.last_raw = None
+        self.dropped_frames = 0
+        self.max_pending_bytes = 512 * 1024  # 写缓冲超512KB视为网络积压，丢旧帧
+        
+        # 触摸手势相关
+        self.screen_width, self.screen_height = (0, 0)
+        if HAS_PYAUTOGUI:
+            self.screen_width, self.screen_height = pyautogui.size()
+
+        self.key_map = {
+            '0': '0', '1': '1', '2': '2', '3': '3', '4': '4',
+            '5': '5', '6': '6', '7': '7', '8': '8', '9': '9',
+            'a': 'a', 'b': 'b', 'c': 'c', 'd': 'd', 'e': 'e',
+            'f': 'f', 'g': 'g', 'h': 'h', 'i': 'i', 'j': 'j',
+            'k': 'k', 'l': 'l', 'm': 'm', 'n': 'n', 'o': 'o',
+            'p': 'p', 'q': 'q', 'r': 'r', 's': 's', 't': 't',
+            'u': 'u', 'v': 'v', 'w': 'w', 'x': 'x', 'y': 'y', 'z': 'z',
+            'A': 'a', 'B': 'b', 'C': 'c', 'D': 'd', 'E': 'e',
+            'F': 'f', 'G': 'g', 'H': 'h', 'I': 'i', 'J': 'j',
+            'K': 'k', 'L': 'l', 'M': 'm', 'N': 'n', 'O': 'o',
+            'P': 'p', 'Q': 'q', 'R': 'r', 'S': 's', 'T': 't',
+            'U': 'u', 'V': 'v', 'W': 'w', 'X': 'x', 'Y': 'y', 'Z': 'z',
+            'escape': 'esc', 'esc': 'esc',
+            'tab': 'tab',
+            'enter': 'enter', 'return': 'enter',
+            'backspace': 'backspace', 'delete': 'backspace',
+            'space': 'space', ' ': 'space',
+            'capslock': 'capslock',
+            'arrowup': 'up', 'up': 'up',
+            'arrowdown': 'down', 'down': 'down',
+            'arrowleft': 'left', 'left': 'left',
+            'arrowright': 'right', 'right': 'right',
+            'control': 'ctrl', 'ctrl': 'ctrl',
+            'shift': 'shift',
+            'alt': 'alt', 'option': 'alt',
+            'meta': 'win', 'win': 'win', 'command': 'win',
+            '-': '-', '=': '=', '[': '[', ']': ']', '\\': '\\',
+            ';': ';', "'": "'", ',': ',', '.': '.', '/': '/',
+            '`': '`',
+            'f1': 'f1', 'f2': 'f2', 'f3': 'f3', 'f4': 'f4',
+            'f5': 'f5', 'f6': 'f6', 'f7': 'f7', 'f8': 'f8',
+            'f9': 'f9', 'f10': 'f10', 'f11': 'f11', 'f12': 'f12',
+        }
+
+        self.special_key_states = {
+            'ctrl': False,
+            'shift': False,
+            'alt': False,
+            'win': False
+        }
+
+        self.control_handlers = {
+            'left_click': self.handle_left_click,
+            'right_click': self.handle_right_click,
+            'double_click': self.handle_double_click,
+            'scroll_up': self.handle_scroll_up,
+            'scroll_down': self.handle_scroll_down,
+            'keyboard': self.handle_keyboard,
+            'mouse_move': self.handle_mouse_move_new,
+            'test_touch': self.handle_test_touch,
+            'touch_start': self.handle_touch_start,
+            'touch_move': self.handle_touch_move,
+            'touch_end': self.handle_touch_end
+        }
+
+        self.active_special_keys = set()
+        self.debug = True
+
+        print(f"[初始化] 操作系统: {platform.system()}")
+        print(f"[初始化] pyautogui 状态: {'可用' if HAS_PYAUTOGUI else '不可用'}")
+
+    async def connect(self):
+        try:
+            print(f"[连接] 正在连接到 {self.ws_url}")
+            self.websocket = await websockets.connect(
+                self.ws_url,
+                ping_interval=None,
+                max_size=None
+            )
+
+            identity_msg = {
+                "type": "capture",
+                "client": "screen_capture",
+                "has_pyautogui": HAS_PYAUTOGUI,
+                "platform": platform.system(),
+                "timestamp": time.time()
+            }
+
+            await self.websocket.send(json.dumps(identity_msg))
+            print(f"[成功] 已连接到服务器，发送标识: {identity_msg}")
+            print("[提示] 开始捕获屏幕并等待控制指令")
+
+            return True
+
+        except ConnectionRefusedError:
+            print("[错误] 连接被拒绝，请确保服务器已启动")
+            return False
+        except Exception as e:
+            print(f"[错误] 连接失败: {e}")
+            return False
+
+    def is_connected(self):
+        if not self.websocket:
+            return False
+        try:
+            if hasattr(self.websocket, 'closed'):
+                return not self.websocket.closed
+            elif hasattr(self.websocket, 'open'):
+                return self.websocket.open
+            else:
+                return True
+        except:
+            return False
+
+    def get_mouse_position(self):
+        try:
+            if HAS_PYAUTOGUI:
+                return pyautogui.position()
+            else:
+                return None
+        except Exception as e:
+            print(f"[错误] 获取鼠标位置失败: {e}")
+            return None
+
+    def draw_mouse_cursor(self, screenshot, mouse_pos):
+        try:
+            if mouse_pos is None:
+                return screenshot
+
+            x, y = mouse_pos
+            img = screenshot.copy()
+            draw = ImageDraw.Draw(img)
+
+            screen_width, screen_height = pyautogui.size()
+            if x < 0 or y < 0 or x >= screen_width or y >= screen_height:
+                return screenshot
+
+            cursor_size = 15
+            cursor_color = (255, 0, 0)
+            line_length = 10
+            line_width = 2
+
+            draw.line([(x - line_length, y), (x + line_length, y)],
+                     fill=cursor_color, width=line_width)
+            draw.line([(x, y - line_length), (x, y + line_length)],
+                     fill=cursor_color, width=line_width)
+            draw.ellipse([(x - cursor_size, y - cursor_size),
+                         (x + cursor_size, y + cursor_size)],
+                     outline=cursor_color, width=2)
+
+            return img
+
+        except Exception as e:
+            print(f"[错误] 绘制鼠标指示器失败: {e}")
+            return screenshot
+
+    async def capture_frame(self):
+        try:
+            raw = ImageGrab.grab()
+
+            mouse_pos = self.get_mouse_position()
+
+            # 静止检测：画面没变且鼠标没动 → 整帧跳过（不编码、不发送）
+            if self.last_raw is not None and self.last_mouse_pos == mouse_pos:
+                try:
+                    if ImageChops.difference(self.last_raw, raw).getbbox() is None:
+                        return None
+                except Exception:
+                    pass  # diff失败（如分辨率变化）按有变化处理
+
+            self.last_raw = raw
+            screenshot = self.draw_mouse_cursor(raw, mouse_pos)
+            self.last_mouse_pos = mouse_pos
+
+            scale = 0.5
+            if scale != 1.0:
+                new_size = (int(screenshot.width * scale), int(screenshot.height * scale))
+                try:
+                    screenshot = screenshot.resize(new_size, Image.Resampling.LANCZOS)
+                except AttributeError:
+                    screenshot = screenshot.resize(new_size, Image.LANCZOS)
+
+            buffer = BytesIO()
+            screenshot.save(buffer, format='JPEG', quality=60, optimize=True)
+
+            # 直接返回 JPEG 字节（省掉 base64 的 33% 膨胀和两端 CPU）
+            return buffer.getvalue()
+
+        except Exception as e:
+            print(f"[错误] 捕获失败: {e}")
+            return None
+
+    async def send_frame(self, frame_data):
+        if not frame_data or not self.is_connected():
+            return False
+
+        # 丢旧帧：写缓冲积压超阈值说明网络跟不上，跳过本帧
+        transport = getattr(self.websocket, 'transport', None)
+        if transport is not None:
+            try:
+                if transport.get_write_buffer_size() > self.max_pending_bytes:
+                    self.dropped_frames += 1
+                    return True
+            except Exception:
+                pass  # transport 查询失败按正常发送处理
+
+        try:
+            await self.websocket.send(frame_data)
+            self.frame_count += 1
+
+            if self.frame_count % 30 == 0:
+                current_time = time.time()
+                if current_time - self.last_status_time > 1:
+                    fps = 30 / (current_time - self.last_status_time) if self.last_status_time > 0 else 0
+                    drop_info = f" | 丢弃 {self.dropped_frames} 帧" if self.dropped_frames else ""
+                    print(f"[状态] 已发送 {self.frame_count} 帧 | 帧率: {fps:.1f} FPS{drop_info}")
+                    self.last_status_time = current_time
+
+            return True
+
+        except websockets.exceptions.ConnectionClosed:
+            print("[警告] 连接已关闭")
+            self.websocket = None
+            return False
+        except Exception as e:
+            print(f"[错误] 发送失败: {e}")
+            return False
+
+    async def receive_control_messages(self):
+        try:
+            while self.is_running and self.is_connected():
+                try:
+                    message = await asyncio.wait_for(self.websocket.recv(), timeout=0.1)
+                    if message:
+                        await self.handle_control_message(message)
+                except asyncio.TimeoutError:
+                    continue
+                except websockets.exceptions.ConnectionClosed:
+                    print("[警告] 控制连接已关闭")
+                    self.websocket = None
+                    break
+                except Exception as e:
+                    print(f"[错误] 接收消息失败: {e}")
+                    break
+        except Exception as e:
+            print(f"[错误] 接收循环异常: {e}")
+            traceback.print_exc()
+
+    async def handle_control_message(self, message):
+        try:
+            print(f"[调试] 收到原始消息: {message[:150]}{'...' if len(message) > 150 else ''}")
+
+            data = json.loads(message)
+            action = data.get('action')
+
+            print(f"[调试] 解析成功: action={action}, full_data={data}")
+
+            if action in self.control_handlers:
+                if action == 'keyboard':
+                    key = data.get('key', '')
+                    state = data.get('state', 'keydown')
+                    self.control_handlers[action](key, state)
+                elif action == 'mouse_move':
+                    if 'dx' in data and 'dy' in data:
+                        dx = data.get('dx', 0)
+                        dy = data.get('dy', 0)
+                        self.control_handlers[action](dx, dy, True)
+                    elif 'x' in data and 'y' in data:
+                        x = data.get('x', 0)
+                        y = data.get('y', 0)
+                        self.control_handlers[action](x, y, False)
+                    else:
+                        print(f"[警告] 无效的 mouse_move 参数: {data}")
+                elif action == 'touch_start':
+                    x = data.get('x', 0.0)
+                    y = data.get('y', 0.0)
+                    self.control_handlers[action](x, y)
+                elif action == 'touch_move':
+                    x = data.get('x', 0.0)
+                    y = data.get('y', 0.0)
+                    self.control_handlers[action](x, y)
+                elif action == 'touch_end':
+                    self.control_handlers[action]()
+                elif action == 'test_touch':
+                    self.control_handlers[action](data)
+                else:
+                    print(f"[控制] 执行: {action}")
+                    if HAS_PYAUTOGUI:
+                        self.control_handlers[action]()
+                    else:
+                        print(f"[警告] pyautogui未安装，无法执行 {action}")
+            else:
+                print(f"[警告] 未知控制指令: {action}")
+
+        except json.JSONDecodeError as e:
+            if len(message) < 100:
+                print(f"[警告] 非JSON控制消息: {message}")
+        except Exception as e:
+            print(f"[错误] 处理控制消息失败: {e}")
+            traceback.print_exc()
+
+    def handle_test_touch(self, data):
+        print(f"[调试消息] {data.get('message', '空')}")
+
+    def handle_left_click(self):
+        try:
+            print(f"[鼠标] 执行左键点击")
+            if HAS_PYAUTOGUI:
+                pyautogui.click(button='left')
+                print(f"[鼠标] 左键点击完成")
+        except Exception as e:
+            print(f"[错误] 左键点击失败: {e}")
+
+    def handle_right_click(self):
+        try:
+            print(f"[鼠标] 执行右键点击")
+            if HAS_PYAUTOGUI:
+                pyautogui.click(button='right')
+                print(f"[鼠标] 右键点击完成")
+        except Exception as e:
+            print(f"[错误] 右键点击失败: {e}")
+
+    def handle_double_click(self):
+        try:
+            print(f"[鼠标] 执行双击")
+            if HAS_PYAUTOGUI:
+                pyautogui.doubleClick()
+                print(f"[鼠标] 双击完成")
+        except Exception as e:
+            print(f"[错误] 双击失败: {e}")
+
+    def handle_scroll_up(self):
+        try:
+            print(f"[鼠标] 执行向上滚动")
+            if HAS_PYAUTOGUI:
+                pyautogui.scroll(100)
+                print(f"[鼠标] 向上滚动完成")
+        except Exception as e:
+            print(f"[错误] 向上滚动失败: {e}")
+
+    def handle_scroll_down(self):
+        try:
+            print(f"[鼠标] 执行向下滚动")
+            if HAS_PYAUTOGUI:
+                pyautogui.scroll(-100)
+                print(f"[鼠标] 向下滚动完成")
+        except Exception as e:
+            print(f"[错误] 向下滚动失败: {e}")
+
+    def handle_mouse_move_new(self, value1, value2, is_relative):
+        try:
+            if not HAS_PYAUTOGUI:
+                print("[警告] pyautogui不可用")
+                return
+
+            print(f"[调试] 开始鼠标移动: value1={value1}, value2={value2}, is_relative={is_relative}")
+
+            if is_relative:
+                dx = value1
+                dy = value2
+                print(f"[调试] 执行相对移动: dx={dx}, dy={dy}")
+                pyautogui.moveRel(dx, dy, duration=0)
+                self.last_mouse_pos = pyautogui.position()
+                print(f"[调试] 移动后鼠标位置: {self.last_mouse_pos}")
+            else:
+                x = value1
+                y = value2
+                print(f"[调试] 执行绝对移动到: ({x}, {y})")
+                screen_width, screen_height = pyautogui.size()
+                abs_x = int(screen_width * x)
+                abs_y = int(screen_height * y)
+                pyautogui.moveTo(abs_x, abs_y, duration=0.1)
+                self.last_mouse_pos = (abs_x, abs_y)
+                print(f"[调试] 移动后鼠标位置: {self.last_mouse_pos}")
+
+        except Exception as e:
+            print(f"[错误] 鼠标移动失败: {e}")
+            traceback.print_exc()
+
+    def handle_touch_start(self, x, y):
+        """处理触摸开始事件（归一化坐标 0-1）"""
+        if not HAS_PYAUTOGUI:
+            print("[警告] pyautogui不可用，无法处理触摸事件")
+            return
+        
+        print(f"[触摸] 按下: ({x:.3f}, {y:.3f})")
+
+    def handle_touch_move(self, x, y):
+        """处理触摸移动事件 - 实时瞬移鼠标到触摸坐标"""
+        if not HAS_PYAUTOGUI:
+            return
+        
+        # 将归一化坐标转换为屏幕像素坐标
+        screen_x = int(x * self.screen_width)
+        screen_y = int(y * self.screen_height)
+        
+        print(f"[触摸] 移动: ({x:.3f}, {y:.3f}) -> 屏幕坐标: ({screen_x}, {screen_y})")
+        
+        # 实时瞬移鼠标到触摸位置
+        try:
+            pyautogui.moveTo(screen_x, screen_y, duration=0)
+        except Exception as e:
+            print(f"[错误] 鼠标移动失败: {e}")
+
+    def handle_touch_end(self):
+        """处理触摸结束事件"""
+        print(f"[触摸] 松开")
+
+    def handle_keyboard(self, key, state):
+        try:
+            if not HAS_PYAUTOGUI:
+                print(f"[警告] pyautogui未安装，无法处理键盘事件")
+                return
+
+            self.last_control_time = time.time()
+
+            if self.debug:
+                print(f"[键盘] 处理事件: key='{key}', state='{state}'")
+
+            mapped_key = self.key_map.get(str(key).lower())
+            if not mapped_key:
+                print(f"[警告] 未知键: '{key}'")
+                return
+
+            if self.debug:
+                print(f"[键盘] 映射键: {key} -> {mapped_key}")
+
+            is_special_key = mapped_key in self.special_key_states
+
+            if state == 'keydown':
+                if is_special_key:
+                    if not self.special_key_states[mapped_key]:
+                        pyautogui.keyDown(mapped_key)
+                        self.special_key_states[mapped_key] = True
+                        self.active_special_keys.add(mapped_key)
+                        print(f"[键盘] 按下特殊键: {mapped_key}")
+                else:
+                    pyautogui.keyDown(mapped_key)
+                    print(f"[键盘] 按下: {mapped_key}")
+
+            elif state == 'keyup':
+                if is_special_key:
+                    if self.special_key_states[mapped_key]:
+                        pyautogui.keyUp(mapped_key)
+                        self.special_key_states[mapped_key] = False
+                        if mapped_key in self.active_special_keys:
+                            self.active_special_keys.remove(mapped_key)
+                        print(f"[键盘] 释放特殊键: {mapped_key}")
+                else:
+                    pyautogui.keyUp(mapped_key)
+                    print(f"[键盘] 释放: {mapped_key}")
+
+            elif state == 'press':
+                pyautogui.press(mapped_key)
+                print(f"[键盘] 按键: {mapped_key}")
+
+        except Exception as e:
+            print(f"[错误] 键盘事件失败: {e}")
+            traceback.print_exc()
+
+    def release_all_special_keys(self):
+        if not HAS_PYAUTOGUI:
+            return
+
+        for key, is_pressed in self.special_key_states.items():
+            if is_pressed:
+                try:
+                    pyautogui.keyUp(key)
+                    self.special_key_states[key] = False
+                    print(f"[清理] 释放特殊键: {key}")
+                except Exception as e:
+                    print(f"[错误] 释放特殊键 {key} 失败: {e}")
+
+        self.active_special_keys.clear()
+
+    async def main_loop(self):
+        self.is_running = True
+
+        print("="*60)
+        print("屏幕共享控制客户端 (调试版本)")
+        print(f"服务器: {self.ws_url}")
+        print(f"控制功能: {'已启用' if HAS_PYAUTOGUI else '未启用'}")
+        print(f"鼠标指示器: 已启用")
+        print(f"支持相对移动: 已启用")
+        print("="*60)
+
+        if not await self.connect():
+            return
+
+        control_task = asyncio.create_task(self.receive_control_messages())
+
+        reconnect_count = 0
+        max_reconnect = 5
+
+        try:
+            while self.is_running:
+                try:
+                    start_time = time.time()
+
+                    if not self.is_connected():
+                        reconnect_count += 1
+                        if reconnect_count <= max_reconnect:
+                            print(f"[重连] 尝试重新连接 ({reconnect_count}/{max_reconnect})...")
+                            if await self.connect():
+                                reconnect_count = 0
+                                control_task.cancel()
+                                control_task = asyncio.create_task(self.receive_control_messages())
+                            else:
+                                await asyncio.sleep(2)
+                                continue
+                        else:
+                            print("[错误] 重连次数过多，退出")
+                            break
+
+                    frame_data = await self.capture_frame()
+                    if frame_data:
+                        await self.send_frame(frame_data)
+
+                    elapsed = time.time() - start_time
+                    target_delay = 1/15
+
+                    if elapsed < target_delay:
+                        await asyncio.sleep(target_delay - elapsed)
+
+                except KeyboardInterrupt:
+                    break
+                except Exception as e:
+                    print(f"[错误] 主循环异常: {e}")
+                    await asyncio.sleep(1)
+
+        except KeyboardInterrupt:
+            print("\n[中断] 用户中断")
+        finally:
+            await self.cleanup(control_task)
+
+    async def cleanup(self, control_task=None):
+        self.is_running = False
+        self.release_all_special_keys()
+
+        if control_task and not control_task.done():
+            control_task.cancel()
+        if self.websocket:
+            try:
+                await self.websocket.close()
+            except:
+                pass
+        print("[关闭] 客户端已停止")
+
+async def main():
+    if not HAS_PIL or not HAS_WEBSOCKETS:
+        return
+
+    if platform.system().lower() == 'darwin':
+        print("[提示] macOS 系统可能需要辅助功能权限")
+
+    client = ScreenCaptureWithKeyboard(host="127.0.0.1", port=8889)
+
+    try:
+        await client.main_loop()
+    except KeyboardInterrupt:
+        print("\n[退出] 程序结束")
+    except Exception as e:
+        print(f"[致命错误] {e}")
+        traceback.print_exc()
+
+if __name__ == "__main__":
+    asyncio.run(main())
+

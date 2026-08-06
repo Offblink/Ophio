@@ -29,3 +29,23 @@ I'll buy me so many pretty dresses, run on the playground circle by circle, and 
 **Blinvo is Blinvo, eternally revive from despair.**
 
 **10.5.2026**
+
+---
+
+**Update 6.8.2026**
+
+Ophio is back — now shipped as source code instead of a rar. The repo is re-organized:
+
+- `app/` — PyQt5 client (main window, screen capture, web assets)
+- `server/` — Go server (rebuild via `build.bat`, outputs `ophio-server.exe`)
+- `legacy/` — the old JavaScript server implementation, kept for history
+
+What changed this round:
+
+- **Binary frames** — screen frames are sent as raw JPEG bytes over WebSocket instead of base64 text (~33% less bandwidth, less CPU on both ends)
+- **Idle skipping** — no frame is sent while the screen and mouse stay still
+- **Frame dropping** — when the network falls behind, stale frames are dropped instead of queuing up
+- **Single instance** — launching Ophio again wakes the existing window instead of spawning a second copy
+- **Build chain fixed** — the Go `server/` package lives inside the module again, `go build` works out of the box
+
+Run: build the Go server with `server/build.bat`, then `python app/Ophio.pyw`. Or package the client via `app/package.bat` (PyInstaller).
