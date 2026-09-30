@@ -4,6 +4,16 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Ophio</title>
+    <script>
+    /* UA 分流：桌面浏览器打开本页 → 进 PC 控制版 pc.html；?view=mobile 强制留在此页 */
+    (function () {
+        var params = new URLSearchParams(location.search);
+        var isMobile = /Android|iPhone|iPad|iPod|Mobile|HarmonyOS/i.test(navigator.userAgent);
+        if (!isMobile && params.get('view') !== 'mobile') {
+            location.replace('pc.html');
+        }
+    })();
+    </script>
     <style>
         /* 基本样式重置与容器样式 */
         * {

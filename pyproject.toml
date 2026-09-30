@@ -1,0 +1,19 @@
+[tool.ruff]
+target-version = "py313"
+line-length = 120
+src = ["app"]
+# legacy/ 是旧版 Node 实现与历史脚本，不属于 Python 门禁范围
+exclude = ["legacy", "build", "dist", "__pycache__"]
+
+[tool.ruff.lint]
+# 增量引入：只开缺陷类规则（导入/语句/运行时/pyflakes），不强迫重写存量风格
+select = [
+    "E4",  # 导入问题
+    "E7",  # 语句问题（含 E722 裸 except）
+    "E9",  # 运行时错误
+    "F",   # pyflakes（未用导入/未定义名字等）
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["app"]

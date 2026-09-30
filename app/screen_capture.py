@@ -14,10 +14,12 @@ import platform
 from io import BytesIO
 import traceback
 
+from pc_protocol import QUIET_ACTIONS, parse_control, resolve_key, to_screen
+
 os.environ['PYAUTOGUI_SAFETY'] = '0'
 
 try:
-    from PIL import ImageGrab, Image, ImageDraw, ImageFont, ImageChops
+    from PIL import ImageGrab, Image, ImageDraw, ImageChops
     HAS_PIL = True
 except ImportError as e:
     print(f"[错误] 未安装Pillow库: {e}")
@@ -38,7 +40,7 @@ try:
     pyautogui.FAILSAFE = False
     pyautogui.PAUSE = 0.01
     print("[信息] pyautogui 已启用")
-except ImportError as e:
+except ImportError:
     HAS_PYAUTOGUI = False
     print("[警告] 未安装pyautogui，控制功能将不可用")
 except Exception as e:
@@ -67,41 +69,7 @@ class ScreenCaptureWithKeyboard:
         if HAS_PYAUTOGUI:
             self.screen_width, self.screen_height = pyautogui.size()
 
-        self.key_map = {
-            '0': '0', '1': '1', '2': '2', '3': '3', '4': '4',
-            '5': '5', '6': '6', '7': '7', '8': '8', '9': '9',
-            'a': 'a', 'b': 'b', 'c': 'c', 'd': 'd', 'e': 'e',
-            'f': 'f', 'g': 'g', 'h': 'h', 'i': 'i', 'j': 'j',
-            'k': 'k', 'l': 'l', 'm': 'm', 'n': 'n', 'o': 'o',
-            'p': 'p', 'q': 'q', 'r': 'r', 's': 's', 't': 't',
-            'u': 'u', 'v': 'v', 'w': 'w', 'x': 'x', 'y': 'y', 'z': 'z',
-            'A': 'a', 'B': 'b', 'C': 'c', 'D': 'd', 'E': 'e',
-            'F': 'f', 'G': 'g', 'H': 'h', 'I': 'i', 'J': 'j',
-            'K': 'k', 'L': 'l', 'M': 'm', 'N': 'n', 'O': 'o',
-            'P': 'p', 'Q': 'q', 'R': 'r', 'S': 's', 'T': 't',
-            'U': 'u', 'V': 'v', 'W': 'w', 'X': 'x', 'Y': 'y', 'Z': 'z',
-            'escape': 'esc', 'esc': 'esc',
-            'tab': 'tab',
-            'enter': 'enter', 'return': 'enter',
-            'backspace': 'backspace', 'delete': 'backspace',
-            'space': 'space', ' ': 'space',
-            'capslock': 'capslock',
-            'arrowup': 'up', 'up': 'up',
-            'arrowdown': 'down', 'down': 'down',
-            'arrowleft': 'left', 'left': 'left',
-            'arrowright': 'right', 'right': 'right',
-            'control': 'ctrl', 'ctrl': 'ctrl',
-            'shift': 'shift',
-            'alt': 'alt', 'option': 'alt',
-            'meta': 'win', 'win': 'win', 'command': 'win',
-            '-': '-', '=': '=', '[': '[', ']': ']', '\\': '\\',
-            ';': ';', "'": "'", ',': ',', '.': '.', '/': '/',
-            '`': '`',
-            'f1': 'f1', 'f2': 'f2', 'f3': 'f3', 'f4': 'f4',
-            'f5': 'f5', 'f6': 'f6', 'f7': 'f7', 'f8': 'f8',
-            'f9': 'f9', 'f10': 'f10', 'f11': 'f11', 'f12': 'f12',
-        }
-
+        # 键名映射统一走 pc_protocol.resolve_key（KeyboardEvent.code + 移动端历史键名）
         self.special_key_states = {
             'ctrl': False,
             'shift': False,
@@ -116,7 +84,11 @@ class ScreenCaptureWithKeyboard:
             'scroll_up': self.handle_scroll_up,
             'scroll_down': self.handle_scroll_down,
             'keyboard': self.handle_keyboard,
-            'mouse_move': self.handle_mouse_move_new,
+            'mouse_move': self.handle_mouse_move,
+            'mouse_down': self.handle_mouse_down,
+            'mouse_up': self.handle_mouse_up,
+            'click': self.handle_click,
+            'scroll': self.handle_scroll,
             'test_touch': self.handle_test_touch,
             'touch_start': self.handle_touch_start,
             'touch_move': self.handle_touch_move,
@@ -169,7 +141,7 @@ class ScreenCaptureWithKeyboard:
                 return self.websocket.open
             else:
                 return True
-        except:
+        except Exception:
             return False
 
     def get_mouse_position(self):
@@ -308,55 +280,44 @@ class ScreenCaptureWithKeyboard:
 
     async def handle_control_message(self, message):
         try:
-            print(f"[调试] 收到原始消息: {message[:150]}{'...' if len(message) > 150 else ''}")
-
             data = json.loads(message)
-            action = data.get('action')
-
-            print(f"[调试] 解析成功: action={action}, full_data={data}")
-
-            if action in self.control_handlers:
-                if action == 'keyboard':
-                    key = data.get('key', '')
-                    state = data.get('state', 'keydown')
-                    self.control_handlers[action](key, state)
-                elif action == 'mouse_move':
-                    if 'dx' in data and 'dy' in data:
-                        dx = data.get('dx', 0)
-                        dy = data.get('dy', 0)
-                        self.control_handlers[action](dx, dy, True)
-                    elif 'x' in data and 'y' in data:
-                        x = data.get('x', 0)
-                        y = data.get('y', 0)
-                        self.control_handlers[action](x, y, False)
-                    else:
-                        print(f"[警告] 无效的 mouse_move 参数: {data}")
-                elif action == 'touch_start':
-                    x = data.get('x', 0.0)
-                    y = data.get('y', 0.0)
-                    self.control_handlers[action](x, y)
-                elif action == 'touch_move':
-                    x = data.get('x', 0.0)
-                    y = data.get('y', 0.0)
-                    self.control_handlers[action](x, y)
-                elif action == 'touch_end':
-                    self.control_handlers[action]()
-                elif action == 'test_touch':
-                    self.control_handlers[action](data)
-                else:
-                    print(f"[控制] 执行: {action}")
-                    if HAS_PYAUTOGUI:
-                        self.control_handlers[action]()
-                    else:
-                        print(f"[警告] pyautogui未安装，无法执行 {action}")
-            else:
-                print(f"[警告] 未知控制指令: {action}")
-
-        except json.JSONDecodeError as e:
+            if not isinstance(data, dict):
+                return
+        except ValueError:
             if len(message) < 100:
                 print(f"[警告] 非JSON控制消息: {message}")
+            return
         except Exception as e:
             print(f"[错误] 处理控制消息失败: {e}")
+            return
+
+        action = data.get('action', '')
+        quiet = action in QUIET_ACTIONS
+        if not quiet:
+            print(f"[调试] 收到控制消息: {data}")
+
+        parsed = parse_control(data)
+        if parsed is None:
+            if not quiet:
+                print(f"[警告] 无效或未知的控制指令: {data}")
+            return
+        action, kwargs = parsed
+
+        handler = self.control_handlers.get(action)
+        if handler is None:
+            print(f"[警告] 未知控制指令: {action}")
+            return
+        if not HAS_PYAUTOGUI:
+            if not quiet:
+                print(f"[警告] pyautogui未安装，无法执行 {action}")
+            return
+
+        if not quiet:
+            print(f"[控制] 执行: {action}")
+        try:
+            handler(**kwargs)
+        except Exception as e:
+            print(f"[错误] 执行控制指令 {action} 失败: {e}")
             traceback.print_exc()
 
     def handle_test_touch(self, data):
@@ -364,78 +325,111 @@ class ScreenCaptureWithKeyboard:
 
     def handle_left_click(self):
         try:
-            print(f"[鼠标] 执行左键点击")
+            print("[鼠标] 执行左键点击")
             if HAS_PYAUTOGUI:
                 pyautogui.click(button='left')
-                print(f"[鼠标] 左键点击完成")
+                print("[鼠标] 左键点击完成")
         except Exception as e:
             print(f"[错误] 左键点击失败: {e}")
 
     def handle_right_click(self):
         try:
-            print(f"[鼠标] 执行右键点击")
+            print("[鼠标] 执行右键点击")
             if HAS_PYAUTOGUI:
                 pyautogui.click(button='right')
-                print(f"[鼠标] 右键点击完成")
+                print("[鼠标] 右键点击完成")
         except Exception as e:
             print(f"[错误] 右键点击失败: {e}")
 
     def handle_double_click(self):
         try:
-            print(f"[鼠标] 执行双击")
+            print("[鼠标] 执行双击")
             if HAS_PYAUTOGUI:
                 pyautogui.doubleClick()
-                print(f"[鼠标] 双击完成")
+                print("[鼠标] 双击完成")
         except Exception as e:
             print(f"[错误] 双击失败: {e}")
 
     def handle_scroll_up(self):
         try:
-            print(f"[鼠标] 执行向上滚动")
+            print("[鼠标] 执行向上滚动")
             if HAS_PYAUTOGUI:
                 pyautogui.scroll(100)
-                print(f"[鼠标] 向上滚动完成")
+                print("[鼠标] 向上滚动完成")
         except Exception as e:
             print(f"[错误] 向上滚动失败: {e}")
 
     def handle_scroll_down(self):
         try:
-            print(f"[鼠标] 执行向下滚动")
+            print("[鼠标] 执行向下滚动")
             if HAS_PYAUTOGUI:
                 pyautogui.scroll(-100)
-                print(f"[鼠标] 向下滚动完成")
+                print("[鼠标] 向下滚动完成")
         except Exception as e:
             print(f"[错误] 向下滚动失败: {e}")
 
-    def handle_mouse_move_new(self, value1, value2, is_relative):
+    def _move_to_normalized(self, x, y):
+        """归一化坐标 → 屏幕坐标并瞬移（高频路径：零动画、零日志）"""
+        screen_width, screen_height = pyautogui.size()
+        abs_x, abs_y = to_screen(x, y, screen_width, screen_height)
+        pyautogui.moveTo(abs_x, abs_y, duration=0)
+        self.last_mouse_pos = (abs_x, abs_y)
+
+    def handle_mouse_move(self, x=None, y=None, dx=None, dy=None):
+        """鼠标移动：dx/dy 为相对位移，x/y 为归一化绝对坐标（二选一，相对优先）"""
+        if not HAS_PYAUTOGUI:
+            return
         try:
-            if not HAS_PYAUTOGUI:
-                print("[警告] pyautogui不可用")
-                return
-
-            print(f"[调试] 开始鼠标移动: value1={value1}, value2={value2}, is_relative={is_relative}")
-
-            if is_relative:
-                dx = value1
-                dy = value2
-                print(f"[调试] 执行相对移动: dx={dx}, dy={dy}")
+            if dx is not None and dy is not None:
                 pyautogui.moveRel(dx, dy, duration=0)
                 self.last_mouse_pos = pyautogui.position()
-                print(f"[调试] 移动后鼠标位置: {self.last_mouse_pos}")
-            else:
-                x = value1
-                y = value2
-                print(f"[调试] 执行绝对移动到: ({x}, {y})")
-                screen_width, screen_height = pyautogui.size()
-                abs_x = int(screen_width * x)
-                abs_y = int(screen_height * y)
-                pyautogui.moveTo(abs_x, abs_y, duration=0.1)
-                self.last_mouse_pos = (abs_x, abs_y)
-                print(f"[调试] 移动后鼠标位置: {self.last_mouse_pos}")
-
+            elif x is not None and y is not None:
+                self._move_to_normalized(x, y)
         except Exception as e:
             print(f"[错误] 鼠标移动失败: {e}")
-            traceback.print_exc()
+
+    def handle_mouse_down(self, button, x=None, y=None):
+        """按下鼠标按键（PC 端拖拽/点击的按下半段）"""
+        if not HAS_PYAUTOGUI:
+            return
+        try:
+            if x is not None and y is not None:
+                self._move_to_normalized(x, y)
+            pyautogui.mouseDown(button=button)
+        except Exception as e:
+            print(f"[错误] 鼠标按下失败: {e}")
+
+    def handle_mouse_up(self, button, x=None, y=None):
+        """释放鼠标按键（PC 端拖拽/点击的释放半段）"""
+        if not HAS_PYAUTOGUI:
+            return
+        try:
+            if x is not None and y is not None:
+                self._move_to_normalized(x, y)
+            pyautogui.mouseUp(button=button)
+        except Exception as e:
+            print(f"[错误] 鼠标释放失败: {e}")
+
+    def handle_click(self, button='left', clicks=1, x=None, y=None):
+        """在指定位置（可选）执行 1-3 次点击"""
+        if not HAS_PYAUTOGUI:
+            return
+        try:
+            if x is not None and y is not None:
+                self._move_to_normalized(x, y)
+            pyautogui.click(button=button, clicks=clicks, interval=0.05)
+        except Exception as e:
+            print(f"[错误] 点击失败: {e}")
+
+    def handle_scroll(self, amount):
+        """滚轮：正数向上、负数向下，单位为格（异常值已在 parse 阶段钳制）"""
+        if not HAS_PYAUTOGUI:
+            return
+        try:
+            if amount:
+                pyautogui.scroll(int(amount))
+        except Exception as e:
+            print(f"[错误] 滚轮失败: {e}")
 
     def handle_touch_start(self, x, y):
         """处理触摸开始事件（归一化坐标 0-1）"""
@@ -464,12 +458,12 @@ class ScreenCaptureWithKeyboard:
 
     def handle_touch_end(self):
         """处理触摸结束事件"""
-        print(f"[触摸] 松开")
+        print("[触摸] 松开")
 
     def handle_keyboard(self, key, state):
         try:
             if not HAS_PYAUTOGUI:
-                print(f"[警告] pyautogui未安装，无法处理键盘事件")
+                print("[警告] pyautogui未安装，无法处理键盘事件")
                 return
 
             self.last_control_time = time.time()
@@ -477,10 +471,8 @@ class ScreenCaptureWithKeyboard:
             if self.debug:
                 print(f"[键盘] 处理事件: key='{key}', state='{state}'")
 
-            mapped_key = self.key_map.get(str(key).lower())
-            if not mapped_key:
-                print(f"[警告] 未知键: '{key}'")
-                return
+            # key 已由 pc_protocol.parse_control 解析；兜底再解析一次保持幂等
+            mapped_key = resolve_key(key) or key
 
             if self.debug:
                 print(f"[键盘] 映射键: {key} -> {mapped_key}")
@@ -540,8 +532,8 @@ class ScreenCaptureWithKeyboard:
         print("屏幕共享控制客户端 (调试版本)")
         print(f"服务器: {self.ws_url}")
         print(f"控制功能: {'已启用' if HAS_PYAUTOGUI else '未启用'}")
-        print(f"鼠标指示器: 已启用")
-        print(f"支持相对移动: 已启用")
+        print("鼠标指示器: 已启用")
+        print("支持相对移动: 已启用")
         print("="*60)
 
         if not await self.connect():
@@ -602,7 +594,7 @@ class ScreenCaptureWithKeyboard:
         if self.websocket:
             try:
                 await self.websocket.close()
-            except:
+            except Exception:
                 pass
         print("[关闭] 客户端已停止")
 

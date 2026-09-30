@@ -38,14 +38,25 @@ type OutMessage struct {
 }
 
 // ControlCommand 控制命令结构
+// X/Y/Dx/Dy 用指针表示：区分「未携带」与「数值为 0」，避免 omitempty 吞掉 0 坐标
 type ControlCommand struct {
-	Action    string  `json:"action"`
-	Key       string  `json:"key,omitempty"`
-	State     string  `json:"state,omitempty"`
-	Timestamp float64 `json:"timestamp,omitempty"`
-	Type      string  `json:"type,omitempty"`
-	X         float64 `json:"x,omitempty"`
-	Y         float64 `json:"y,omitempty"`
+	Action    string   `json:"action"`
+	Key       string   `json:"key,omitempty"`
+	State     string   `json:"state,omitempty"`
+	Timestamp float64  `json:"timestamp,omitempty"`
+	Type      string   `json:"type,omitempty"`
+	X         *float64 `json:"x,omitempty"`
+	Y         *float64 `json:"y,omitempty"`
+	Dx        *float64 `json:"dx,omitempty"`
+	Dy        *float64 `json:"dy,omitempty"`
+	Button    string   `json:"button,omitempty"`
+	Amount    int      `json:"amount,omitempty"`
+	Clicks    int      `json:"clicks,omitempty"`
+}
+
+// quietAction 判定高频静默流：不打日志、不回 ack，防止鼠标移动刷爆控制台
+func quietAction(action string) bool {
+	return action == "mouse_move"
 }
 
 // IdentityMessage 客户端标识消息
@@ -291,18 +302,17 @@ func (s *WebSocketServer) writePump(client *Client) {
 }
 
 func (s *WebSocketServer) handleMessage(client *Client, messageType int, message []byte) {
-	log.Printf("[调试] 收到消息 (类型: %d, 长度: %d)\n", messageType, len(message))
-
 	// 尝试解析为JSON控制命令（优先处理）
 	if len(message) > 0 && message[0] == '{' {
 		var cmd ControlCommand
 		if err := json.Unmarshal(message, &cmd); err == nil {
-			log.Printf("[调试] JSON解析成功: Action='%s', Type='%s', X=%f, Y=%f\n", cmd.Action, cmd.Type, cmd.X, cmd.Y)
-
 			// 如果有action字段，优先作为控制命令处理
 			if cmd.Action != "" {
-				log.Printf("[调试] 检测到控制命令: %s, 发送者当前类型: %s\n", cmd.Action, client.Type)
-				s.handleControlCommand(client, cmd)
+				quiet := quietAction(cmd.Action)
+				if !quiet {
+					log.Printf("[调试] 控制命令: Action='%s', 发送者类型: %s, 长度: %d\n", cmd.Action, client.Type, len(message))
+				}
+				s.handleControlCommand(client, cmd, quiet)
 				return
 			}
 
@@ -343,38 +353,40 @@ func (s *WebSocketServer) handleMessage(client *Client, messageType int, message
 	}
 }
 
-func (s *WebSocketServer) handleControlCommand(client *Client, cmd ControlCommand) {
-	log.Printf("[调试] 处理控制命令 - 发送者类型: %s, Action: %s\n", client.Type, cmd.Action)
-
-	if cmd.Action == "keyboard" {
-		log.Printf("[键盘] %s - %s\n", cmd.Key, cmd.State)
-	} else {
-		log.Printf("[控制] 收到指令: %s\n", cmd.Action)
-	}
-
-	// 统计当前capture客户端数量
-	s.mu.RLock()
-	captureCount := 0
-	for c := range s.Clients {
-		if c.Type == ClientTypeCapture {
-			captureCount++
-			log.Printf("[调试] Capture客户端: %s\n", c.RemoteIP)
+func (s *WebSocketServer) handleControlCommand(client *Client, cmd ControlCommand, quiet bool) {
+	if !quiet {
+		if cmd.Action == "keyboard" {
+			log.Printf("[键盘] %s - %s\n", cmd.Key, cmd.State)
+		} else {
+			log.Printf("[控制] 收到指令: %s\n", cmd.Action)
 		}
+
+		// 统计当前capture客户端数量
+		s.mu.RLock()
+		captureCount := 0
+		for c := range s.Clients {
+			if c.Type == ClientTypeCapture {
+				captureCount++
+				log.Printf("[调试] Capture客户端: %s\n", c.RemoteIP)
+			}
+		}
+		s.mu.RUnlock()
+		log.Printf("[调试] 当前Capture客户端总数: %d\n", captureCount)
 	}
-	s.mu.RUnlock()
-	log.Printf("[调试] 当前Capture客户端总数: %d\n", captureCount)
 
 	// 转发控制命令给所有capture客户端
-	s.broadcastToCaptureClients(cmd, client)
+	s.broadcastToCaptureClients(cmd, client, quiet)
 
-	// 发送确认
-	ack := map[string]interface{}{
-		"status":    "ok",
-		"received":  map[string]interface{}{"action": cmd.Action, "key": cmd.Key},
-		"timestamp": time.Now().Format(time.RFC3339),
-	}
-	if data, err := json.Marshal(ack); err == nil {
-		client.Send <- OutMessage{Type: websocket.TextMessage, Data: data}
+	// 发送确认（高频静默流不回 ack）
+	if !quiet {
+		ack := map[string]interface{}{
+			"status":    "ok",
+			"received":  map[string]interface{}{"action": cmd.Action, "key": cmd.Key},
+			"timestamp": time.Now().Format(time.RFC3339),
+		}
+		if data, err := json.Marshal(ack); err == nil {
+			client.Send <- OutMessage{Type: websocket.TextMessage, Data: data}
+		}
 	}
 
 	s.Stats.mu.Lock()
@@ -406,7 +418,7 @@ func (s *WebSocketServer) broadcastToBrowsers(messageType int, data []byte, send
 	s.Stats.mu.Unlock()
 }
 
-func (s *WebSocketServer) broadcastToCaptureClients(cmd ControlCommand, sender *Client) {
+func (s *WebSocketServer) broadcastToCaptureClients(cmd ControlCommand, sender *Client, quiet bool) {
 	sendCount := 0
 
 	cmdData, err := json.Marshal(cmd)
@@ -420,17 +432,25 @@ func (s *WebSocketServer) broadcastToCaptureClients(cmd ControlCommand, sender *
 
 	for client := range s.Clients {
 		if client != sender && client.Type == ClientTypeCapture {
-			log.Printf("[控制] 发送给Capture客户端: %s\n", client.RemoteIP)
+			if !quiet {
+				log.Printf("[控制] 发送给Capture客户端: %s", client.RemoteIP)
+			}
 			select {
 			case client.Send <- OutMessage{Type: websocket.TextMessage, Data: cmdData}:
 				sendCount++
-				log.Printf("[控制] 发送成功: %s\n", client.RemoteIP)
+				if !quiet {
+					log.Printf("[控制] 发送成功: %s", client.RemoteIP)
+				}
 			default:
-				log.Printf("[警告] 发送失败，关闭连接: %s\n", client.RemoteIP)
+				log.Printf("[警告] 发送失败，关闭连接: %s", client.RemoteIP)
 				close(client.Send)
 				delete(s.Clients, client)
 			}
 		}
+	}
+
+	if quiet {
+		return
 	}
 
 	if sendCount > 0 {

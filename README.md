@@ -48,4 +48,15 @@ What changed this round:
 - **Single instance** — launching Ophio again wakes the existing window instead of spawning a second copy
 - **Build chain fixed** — the Go `server/` package lives inside the module again, `go build` works out of the box
 
+**Update 30.9.2026**
+
+A desktop remote-control page joins the mobile one:
+
+- **`pc.html`** — from a PC, open the server address and you land here: one shared screen, no buttons. Hover the screen to take over — real mouse (left / right / middle, drag, wheel) and keyboard are sent straight to the host, like sitting in front of it
+- **Esc** releases every held key and pauses control; move the cursor out of the screen and back to resume
+- **UA routing** — desktop browsers get `pc.html`, phones get `index.html`; force either with `?view=pc` / `?view=mobile`
+- **Protocol** — control messages now carry `dx/dy`, `button`, `amount`, `clicks`; zero coordinates survive the relay; mouse-move traffic is no longer logged or acked, so the console stays quiet at 60 Hz
+- **Host input** — cursor moves are instant (the old 100 ms animation is gone), press/release pairs enable drags, wheel is signed notches, and `KeyboardEvent.code` maps the full keyboard (Home / End / PageUp / F13-24 …)
+- **Gates** — `ruff check .` and `pytest` run from the repo root, config in `pyproject.toml`, tests in `tests/`
+
 Run: build the Go server with `server/build.bat`, then `python app/Ophio.pyw`. Or package the client via `app/package.bat` (PyInstaller).
