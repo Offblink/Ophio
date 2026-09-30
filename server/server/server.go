@@ -43,6 +43,7 @@ type ControlCommand struct {
 	Action    string   `json:"action"`
 	Key       string   `json:"key,omitempty"`
 	State     string   `json:"state,omitempty"`
+	Repeat    bool     `json:"repeat,omitempty"` // 长按自动重复帧：静默转发，不打日志不回 ack
 	Timestamp float64  `json:"timestamp,omitempty"`
 	Type      string   `json:"type,omitempty"`
 	X         *float64 `json:"x,omitempty"`
@@ -308,7 +309,7 @@ func (s *WebSocketServer) handleMessage(client *Client, messageType int, message
 		if err := json.Unmarshal(message, &cmd); err == nil {
 			// 如果有action字段，优先作为控制命令处理
 			if cmd.Action != "" {
-				quiet := quietAction(cmd.Action)
+				quiet := quietAction(cmd.Action) || cmd.Repeat
 				if !quiet {
 					log.Printf("[调试] 控制命令: Action='%s', 发送者类型: %s, 长度: %d\n", cmd.Action, client.Type, len(message))
 				}

@@ -47,6 +47,11 @@ except Exception as e:
     HAS_PYAUTOGUI = False
     print(f"[警告] pyautogui 初始化失败: {e}")
 
+# pyautogui.scroll 把参数原样当 mouse_event 的 dwData 传，而 Windows 要求
+# dwData 是 WHEEL_DELTA(120) 的整数倍（120 = 一格）——直接传格数只有 1/120 格，
+# 应用侧表现为"滚不动"
+WHEEL_DELTA = 120
+
 class ScreenCaptureWithKeyboard:
     def __init__(self, host="127.0.0.1", port=8889):
         self.host = host
@@ -292,7 +297,8 @@ class ScreenCaptureWithKeyboard:
             return
 
         action = data.get('action', '')
-        quiet = action in QUIET_ACTIONS
+        # repeat 帧是长按自动重复（约30条/秒），与鼠标移动同为高频流：不打日志、不回执行日志
+        quiet = action in QUIET_ACTIONS or bool(data.get('repeat'))
         if not quiet:
             print(f"[调试] 收到控制消息: {data}")
 
@@ -354,7 +360,7 @@ class ScreenCaptureWithKeyboard:
         try:
             print("[鼠标] 执行向上滚动")
             if HAS_PYAUTOGUI:
-                pyautogui.scroll(100)
+                pyautogui.scroll(WHEEL_DELTA)
                 print("[鼠标] 向上滚动完成")
         except Exception as e:
             print(f"[错误] 向上滚动失败: {e}")
@@ -363,7 +369,7 @@ class ScreenCaptureWithKeyboard:
         try:
             print("[鼠标] 执行向下滚动")
             if HAS_PYAUTOGUI:
-                pyautogui.scroll(-100)
+                pyautogui.scroll(-WHEEL_DELTA)
                 print("[鼠标] 向下滚动完成")
         except Exception as e:
             print(f"[错误] 向下滚动失败: {e}")
@@ -427,7 +433,7 @@ class ScreenCaptureWithKeyboard:
             return
         try:
             if amount:
-                pyautogui.scroll(int(amount))
+                pyautogui.scroll(int(amount) * WHEEL_DELTA)
         except Exception as e:
             print(f"[错误] 滚轮失败: {e}")
 
@@ -460,7 +466,8 @@ class ScreenCaptureWithKeyboard:
         """处理触摸结束事件"""
         print("[触摸] 松开")
 
-    def handle_keyboard(self, key, state):
+    def handle_keyboard(self, key, state, repeat=False):
+        """键盘事件；repeat=True 为长按的自动重复帧——静默重按下产生连发"""
         try:
             if not HAS_PYAUTOGUI:
                 print("[警告] pyautogui未安装，无法处理键盘事件")
@@ -468,13 +475,16 @@ class ScreenCaptureWithKeyboard:
 
             self.last_control_time = time.time()
 
-            if self.debug:
+            # 长按重复帧不打日志（浏览器自动重复约30条/秒会刷爆控制台）
+            verbose = self.debug and not repeat
+
+            if verbose:
                 print(f"[键盘] 处理事件: key='{key}', state='{state}'")
 
             # key 已由 pc_protocol.parse_control 解析；兜底再解析一次保持幂等
             mapped_key = resolve_key(key) or key
 
-            if self.debug:
+            if verbose:
                 print(f"[键盘] 映射键: {key} -> {mapped_key}")
 
             is_special_key = mapped_key in self.special_key_states
@@ -485,10 +495,14 @@ class ScreenCaptureWithKeyboard:
                         pyautogui.keyDown(mapped_key)
                         self.special_key_states[mapped_key] = True
                         self.active_special_keys.add(mapped_key)
-                        print(f"[键盘] 按下特殊键: {mapped_key}")
+                        if verbose:
+                            print(f"[键盘] 按下特殊键: {mapped_key}")
                 else:
+                    # 注入的 keyDown 不会像物理键盘那样自重复：长按重复帧靠再次
+                    # keyDown 产生 WM_KEYDOWN 连发（与 OS 自动重复同路径）
                     pyautogui.keyDown(mapped_key)
-                    print(f"[键盘] 按下: {mapped_key}")
+                    if verbose:
+                        print(f"[键盘] 按下: {mapped_key}")
 
             elif state == 'keyup':
                 if is_special_key:

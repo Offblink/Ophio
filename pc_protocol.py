@@ -198,7 +198,8 @@ def parse_control(msg: Mapping[str, Any]) -> Optional[Tuple[str, dict]]:
         key = resolve_key(msg.get("key"))
         if key is None:
             return None
-        return "keyboard", {"key": key, "state": state}
+        # repeat=True 是长按的自动重复帧：宿主静默重按下 keyDown 实现连发
+        return "keyboard", {"key": key, "state": state, "repeat": bool(msg.get("repeat", False))}
 
     if action == "mouse_move":
         dx = _as_float(msg.get("dx")) if "dx" in msg else None

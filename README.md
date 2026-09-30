@@ -57,7 +57,7 @@ A desktop remote-control page joins the mobile one:
 - **Esc** releases every held key and pauses control; move the cursor out of the screen and back to resume
 - **UA routing** — desktop browsers get `pc.html`, phones get `index.html`; force either with `?view=pc` / `?view=mobile`
 - **Protocol** — control messages now carry `dx/dy`, `button`, `amount`, `clicks`; zero coordinates survive the relay; mouse-move traffic is no longer logged or acked, so the console stays quiet at 60 Hz
-- **Host input** — cursor moves are instant (the old 100 ms animation is gone), press/release pairs enable drags, wheel is signed notches, and `KeyboardEvent.code` maps the full keyboard (Home / End / PageUp / F13-24 …)
+- **Host input** — cursor moves are instant (the old 100 ms animation is gone), press/release pairs enable drags, wheel notches are sent as real Windows wheel units (the old build sent 1/120th of a notch, so the page barely moved), and `KeyboardEvent.code` maps the full keyboard (Home / End / PageUp / F13-24 …). Holding a key now streams the browser's auto-repeat to the host, so long-press repeats like a physical keyboard (repeat frames stay out of the console logs)
 - **Gates** — `ruff check .` and `pytest` run from the repo root, config in `pyproject.toml`, tests in `tests/`
 - **Repo layout** — `app/` is gone; the client (`Ophio.pyw`, `screen_capture.py`, `pc_protocol.py`, `public/`) now sits at the repo root, next to `server/` and `legacy/`
 

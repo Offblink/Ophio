@@ -387,6 +387,7 @@
         // Esc 在暂停态也响应：再按一次直接恢复
         if (e.code === 'Escape') {
             e.preventDefault();
+            if (e.repeat) return;              // 长按 Esc 不反复切换暂停
             if (paused) resumeCapture();
             else if (captureActive) pauseCapture();
             return;
@@ -394,7 +395,14 @@
         if (!captureActive) return;
         e.preventDefault();
         const code = e.code || e.key;
-        if (pressedKeys.has(code)) return;   // 浏览器自动重复只发首次，宿主按住会自重复
+        if (pressedKeys.has(code)) {
+            // 长按：把浏览器自动重复转发给宿主（宿主注入的 keyDown 不会自重复，
+            // repeat=true 让宿主静默重按下以产生连发）
+            if (e.repeat) {
+                send({ action: 'keyboard', key: code, state: 'keydown', repeat: true, timestamp: Date.now() });
+            }
+            return;
+        }
         pressedKeys.add(code);
         send({ action: 'keyboard', key: code, state: 'keydown', timestamp: Date.now() });
     }, true);

@@ -116,20 +116,27 @@ class TestMouseButtons:
 
 
 class TestScroll:
-    def test_scroll_amount_passthrough(self, env):
+    def test_scroll_notches_converted_to_wheel_delta(self, env):
+        # Windows dwData 必须是 120 的整数倍；1 格不换算 = 1/120 格 = 滚不动
         client, fake = env
         dispatch(client, {"action": "scroll", "amount": -3})
-        assert fake.calls == [("scroll", -3)]
+        assert fake.calls == [("scroll", -360)]
 
     def test_scroll_capped_value(self, env):
         client, fake = env
         dispatch(client, {"action": "scroll", "amount": -9999})
-        assert fake.calls == [("scroll", -10)]
+        assert fake.calls == [("scroll", -1200)]  # 钳制10格 → 10*120
 
     def test_zero_scroll_is_noop(self, env):
         client, fake = env
         dispatch(client, {"action": "scroll", "amount": 0})
         assert fake.calls == []
+
+    def test_legacy_scroll_buttons_send_full_notch(self, env):
+        client, fake = env
+        dispatch(client, {"action": "scroll_up"})
+        dispatch(client, {"action": "scroll_down"})
+        assert fake.calls == [("scroll", 120), ("scroll", -120)]
 
 
 class TestKeyboard:
@@ -158,6 +165,31 @@ class TestKeyboard:
         dispatch(client, {"action": "keyboard", "key": "PageDown", "state": "keydown"})
         dispatch(client, {"action": "keyboard", "key": "PageDown", "state": "keyup"})
         assert fake.calls == [("keyDown", "pagedown"), ("keyUp", "pagedown")]
+
+    def test_repeat_keydown_reissues_press(self, env):
+        # 长按：repeat 帧必须再次 keyDown 才能连发（注入的 keyDown 不自重复）
+        client, fake = env
+        dispatch(client, {"action": "keyboard", "key": "KeyQ", "state": "keydown"})
+        dispatch(client, {"action": "keyboard", "key": "KeyQ", "state": "keydown", "repeat": True})
+        dispatch(client, {"action": "keyboard", "key": "KeyQ", "state": "keyup"})
+        assert fake.calls == [("keyDown", "q"), ("keyDown", "q"), ("keyUp", "q")]
+
+    def test_repeat_never_represses_modifier(self, env):
+        client, fake = env
+        dispatch(client, {"action": "keyboard", "key": "ControlLeft", "state": "keydown"})
+        dispatch(client, {"action": "keyboard", "key": "ControlLeft", "state": "keydown", "repeat": True})
+        assert fake.calls == [("keyDown", "ctrl")]  # 修饰键保持按下，不连发
+
+    def test_repeat_frames_are_silent(self, env, capsys):
+        # repeat 约30条/秒，任何日志都会刷爆控制台；普通键仍打日志作对照
+        client, fake = env
+        capsys.readouterr()  # 丢弃构造期输出
+        dispatch(client, {"action": "keyboard", "key": "KeyA", "state": "keydown", "repeat": True})
+        assert capsys.readouterr().out == ""
+        assert fake.calls == [("keyDown", "a")]
+
+        dispatch(client, {"action": "keyboard", "key": "KeyA", "state": "keydown"})
+        assert "[键盘]" in capsys.readouterr().out
 
 
 class TestDispatchRobustness:

@@ -96,11 +96,22 @@ class TestParseControl:
     def test_keyboard_resolves_code_and_defaults_state(self):
         action, kwargs = pp.parse_control({"action": "keyboard", "key": "KeyB"})
         assert action == "keyboard"
-        assert kwargs == {"key": "b", "state": "keydown"}
+        assert kwargs == {"key": "b", "state": "keydown", "repeat": False}
 
     def test_keyboard_keyup(self):
         _, kwargs = pp.parse_control({"action": "keyboard", "key": "ShiftLeft", "state": "keyup"})
-        assert kwargs == {"key": "shift", "state": "keyup"}
+        assert kwargs == {"key": "shift", "state": "keyup", "repeat": False}
+
+    def test_keyboard_repeat_flag_passthrough(self):
+        # 长按自动重复帧：repeat 必须透传给 handler（宿主据此静默连发）
+        _, kwargs = pp.parse_control(
+            {"action": "keyboard", "key": "KeyA", "state": "keydown", "repeat": True}
+        )
+        assert kwargs["repeat"] is True
+
+    def test_keyboard_repeat_flag_truthy_coerced_to_bool(self):
+        _, kwargs = pp.parse_control({"action": "keyboard", "key": "KeyA", "repeat": "yes"})
+        assert kwargs["repeat"] is True
 
     def test_keyboard_unknown_key_rejected(self):
         assert pp.parse_control({"action": "keyboard", "key": "NotAKey"}) is None
