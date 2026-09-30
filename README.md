@@ -1,58 +1,64 @@
-# Ophio
+# README - Ophio
 
-**Ophio** lets you control your Windows PC from another device over LAN — screen sharing plus real mouse and keyboard. An upgrade for ***NoGame***.
+Yeah you guessed it right—— ***Ophio***​ allow you control your PC in another device through LAN—— An upgrade for ***NoGame***!
 
-**下载** → [Releases](https://github.com/Offblink/Ophio/releases)：**`Ophio-v0.1.1-full.rar`**，解压即用，不需要安装 Python（SHA256 见 release notes）。
+**Download** — [Releases](https://github.com/Offblink/Ophio/releases): grab **`Ophio-v0.1.1-full.rar`** (complete runtime — extract, double-click `Ophio.exe`, no Python needed). SHA256 listed in the release notes.
 
-## 快速开始
+**Blivno**
 
-1. 下载并解压 `Ophio-v0.1.1-full.rar`
-2. 双击 `Ophio.exe`，点「启动服务」
-3. 用另一台设备的浏览器打开 `http://<主机IP>:8888`（启动窗口会列出局域网地址和二维码）
-
-## 两个控制页
-
-| 谁打开 | 页面 | 怎么操作 |
-|---|---|---|
-| 手机浏览器 | `index.html` | 底部按钮：左/右键、滚动、虚拟键盘 |
-| 电脑浏览器 | `pc.html` | 整面共享屏幕、无按钮：鼠标悬停即接管，左/右/中键、拖拽、滚轮、键盘直接用 |
-
-- 桌面浏览器自动进 PC 页，手机自动进移动页；`?view=pc` / `?view=mobile` 可强制指定
-- PC 页按 **Esc** 释放全部按键并暂停控制；移出画面再移回即恢复
-
-## 组成
-
-| 文件 | 作用 |
-|---|---|
-| `Ophio.exe` | PyQt5 客户端：启动服务、捕获屏幕、系统托盘；屏幕捕获已内置其中 |
-| `ophio-server.exe` | Go 服务器：HTTP `:8888` 发网页，WebSocket `:8889` 转发画面与控制指令 |
-| `public/` | 两个控制页（`index.html`、`pc.html`） |
-| `Ophio.pyw`、`screen_capture.py`、`pc_protocol.py` | 源码，也随 rar 一起发布，方便二次开发 |
-
-传输特性：JPEG 二进制帧、画面静止不发帧、网络落后时丢弃过期帧、单实例启动（重复双击会唤醒已有窗口）。
-
-## 从源码运行（开发）
-
-```bat
-server\build.bat        :: 编译 Go 服务器 → ophio-server.exe
-python Ophio.pyw        :: 启动客户端
-package.bat             :: PyInstaller 打包客户端
-```
-
-门禁：`ruff check .`、`pytest`（配置在 `pyproject.toml`，测试在 `tests/`）。
-
-## 仓库结构
-
-- `Ophio.pyw` — 客户端主程序（窗口、托盘、子进程管理）
-- `screen_capture.py` — 屏幕捕获与控制指令执行
-- `pc_protocol.py` — 控制指令解析、键鼠映射
-- `public/` — 网页控制端
-- `server/` — Go 服务器（`build.bat` 编译）
-- `legacy/` — 旧版 JavaScript 服务器，仅作存档
-- `tests/` — pytest 测试
-
-更新日志见 [Releases](https://github.com/Offblink/Ophio/releases) 与提交历史。
+**19.4.2026**
 
 ---
 
-**Blivno** · 19.4.2026
+Dearest U: ***Ophio2*** coming!
+
+At ***Ophio***, we removed the control of mouse moving, for the reason that the server developed by **JavaScript** is slow and inefficient.
+
+At the past 3 weeks, so much **schoolwork** dragged me a lot. I was too tired to go on improving ***Ophio***.
+
+Finally on yesterday, I picked a cherished time to fasten my improvement—— rebuilding the server with **Go**, which ended at midnight.
+
+I was filled with sorrows and sentiments of being touched—— Yes, I got down recently, since hurried schoolwork, parting with old friends, teachers, parents, and my **Lover Sis**.
+
+I'm not sure if I've fallen in love with her, that's such an unbelievable news, but truly happening on me, rising a strong wave in my deepest heart. I get no idea to pour my emotion at midnight, so much complicated feelings, to anyone. I can not, influence others because of my own messes.
+
+*Github* & ***Ophio*** somehow become my outlet... Probably I'd spend some time on schoolwork and **self-development**—— **Never count on love😭**
+
+I'll buy me so many pretty dresses, run on the playground circle by circle, and pass my hospitality to everyone. That's not their faults. I'll farewell to my Lover Sis, we'll be **most glued** friends from on.
+
+
+**Blinvo is Blinvo, eternally revive from despair.**
+
+**10.5.2026**
+
+---
+
+**Update 6.8.2026**
+
+Ophio is back — now shipped as source code instead of a rar. The repo is re-organized:
+
+- `app/` — PyQt5 client (main window, screen capture, web assets)
+- `server/` — Go server (rebuild via `build.bat`, outputs `ophio-server.exe`)
+- `legacy/` — the old JavaScript server implementation, kept for history
+
+What changed this round:
+
+- **Binary frames** — screen frames are sent as raw JPEG bytes over WebSocket instead of base64 text (~33% less bandwidth, less CPU on both ends)
+- **Idle skipping** — no frame is sent while the screen and mouse stay still
+- **Frame dropping** — when the network falls behind, stale frames are dropped instead of queuing up
+- **Single instance** — launching Ophio again wakes the existing window instead of spawning a second copy
+- **Build chain fixed** — the Go `server/` package lives inside the module again, `go build` works out of the box
+
+**Update 30.9.2026**
+
+A desktop remote-control page joins the mobile one:
+
+- **`pc.html`** — from a PC, open the server address and you land here: one shared screen, no buttons. Hover the screen to take over — real mouse (left / right / middle, drag, wheel) and keyboard are sent straight to the host, like sitting in front of it
+- **Esc** releases every held key and pauses control; move the cursor out of the screen and back to resume
+- **UA routing** — desktop browsers get `pc.html`, phones get `index.html`; force either with `?view=pc` / `?view=mobile`
+- **Protocol** — control messages now carry `dx/dy`, `button`, `amount`, `clicks`; zero coordinates survive the relay; mouse-move traffic is no longer logged or acked, so the console stays quiet at 60 Hz
+- **Host input** — cursor moves are instant (the old 100 ms animation is gone), press/release pairs enable drags, wheel is signed notches, and `KeyboardEvent.code` maps the full keyboard (Home / End / PageUp / F13-24 …)
+- **Gates** — `ruff check .` and `pytest` run from the repo root, config in `pyproject.toml`, tests in `tests/`
+- **Repo layout** — `app/` is gone; the client (`Ophio.pyw`, `screen_capture.py`, `pc_protocol.py`, `public/`) now sits at the repo root, next to `server/` and `legacy/`
+
+Run: extract `Ophio-v0.1.1-full.rar` from Releases and double-click `Ophio.exe` — nothing to build; the exe bundles the screen capture, and the rar carries `public/` (web UIs) plus `ophio-server.exe`. For development: build the Go server with `server/build.bat`, then `python Ophio.pyw`. Or package the client via `package.bat` (PyInstaller).
