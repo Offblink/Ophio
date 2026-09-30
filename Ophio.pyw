@@ -1527,6 +1527,18 @@ def main():
 
 
 if __name__ == "__main__":
+    # ── 冻结版子进程分发：Ophio.exe screen_capture.py → 直接运行内置捕获脚本 ──
+    # 源码运行时子进程是 python screen_capture.py，走不到这里；
+    # 冻结后 sys.executable 指向本 exe，分发必须在 GUI/单实例之前。
+    if len(sys.argv) > 1 and sys.argv[1].endswith("screen_capture.py"):
+        import runpy
+
+        base = getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__)))
+        script = os.path.join(base, "screen_capture.py")
+        sys.argv = [script] + sys.argv[2:]
+        runpy.run_path(script, run_name="__main__")
+        sys.exit(0)
+
     # 检查必要的包
     required_packages = []
     
