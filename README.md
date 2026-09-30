@@ -2,7 +2,7 @@
 
 Yeah you guessed it right—— ***Ophio***​ allow you control your PC in another device through LAN—— An upgrade for ***NoGame***!
 
-**Download** — [Releases](https://github.com/Offblink/Ophio/releases): grab **`Ophio-v0.1.1-full.rar`** (complete runtime — extract, double-click `Ophio.exe`, no Python needed). SHA256 listed in the release notes.
+**Download** — [Releases](https://github.com/Offblink/Ophio/releases): grab **`Ophio-v0.1.2-full.rar`** (complete runtime — extract, double-click `Ophio.exe`, no Python needed). SHA256 listed in the release notes.
 
 **Blivno**
 
@@ -61,4 +61,4 @@ A desktop remote-control page joins the mobile one:
 - **Gates** — `ruff check .` and `pytest` run from the repo root, config in `pyproject.toml`, tests in `tests/`
 - **Repo layout** — `app/` is gone; the client (`Ophio.pyw`, `screen_capture.py`, `pc_protocol.py`, `public/`) now sits at the repo root, next to `server/` and `legacy/`
 
-Run: extract `Ophio-v0.1.1-full.rar` from Releases and double-click `Ophio.exe` — nothing to build; the exe bundles the screen capture, and the rar carries `public/` (web UIs) plus `ophio-server.exe`. For development: build the Go server with `server/build.bat`, then `python Ophio.pyw`. Or package the client via `package.bat` (PyInstaller).
+Run: extract `Ophio-v0.1.2-full.rar` from Releases and double-click `Ophio.exe` — nothing to build; the exe bundles the screen capture, and the rar carries `public/` (web UIs) plus `ophio-server.exe`. For development: build the Go server with `server/build.bat`, then `python Ophio.pyw`. Or package the client via `package.bat` (PyInstaller).
