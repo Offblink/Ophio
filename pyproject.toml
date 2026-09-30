@@ -1,7 +1,7 @@
 [tool.ruff]
 target-version = "py313"
 line-length = 120
-src = ["app"]
+src = ["."]
 # legacy/ 是旧版 Node 实现与历史脚本，不属于 Python 门禁范围
 exclude = ["legacy", "build", "dist", "__pycache__"]
 
@@ -16,4 +16,4 @@ select = [
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-pythonpath = ["app"]
+pythonpath = ["."]

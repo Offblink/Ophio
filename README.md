@@ -58,5 +58,6 @@ A desktop remote-control page joins the mobile one:
 - **Protocol** — control messages now carry `dx/dy`, `button`, `amount`, `clicks`; zero coordinates survive the relay; mouse-move traffic is no longer logged or acked, so the console stays quiet at 60 Hz
 - **Host input** — cursor moves are instant (the old 100 ms animation is gone), press/release pairs enable drags, wheel is signed notches, and `KeyboardEvent.code` maps the full keyboard (Home / End / PageUp / F13-24 …)
 - **Gates** — `ruff check .` and `pytest` run from the repo root, config in `pyproject.toml`, tests in `tests/`
+- **Repo layout** — `app/` is gone; the client (`Ophio.pyw`, `screen_capture.py`, `pc_protocol.py`, `public/`) now sits at the repo root, next to `server/` and `legacy/`
 
-Run: build the Go server with `server/build.bat`, then `python app/Ophio.pyw`. Or package the client via `app/package.bat` (PyInstaller).
+Run: build the Go server with `server/build.bat`, then `python Ophio.pyw`. Or package the client via `package.bat` (PyInstaller).
