@@ -1,7 +1,8 @@
 # README - Ophio
 
-Yeah you guessed it right—— ***Ophio***​ allow you to control your PC in another device through LAN—— An upgrade for ***NoGame***!
+Yeah you guessed it right—— ***Ophio***​ allow you control your PC in another device through LAN—— An upgrade for ***NoGame***!
 
+**Download** — Windows builds live on [Releases](https://github.com/Offblink/Ophio/releases): `Ophio.exe` (client) + `ophio-server.exe` (server), SHA256 listed in the release notes.
 
 **Blivno**
 
